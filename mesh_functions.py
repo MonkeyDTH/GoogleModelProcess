@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-23 17:46:14
 LastEditors: Leili
-LastEditTime: 2025-04-24 15:06:51
+LastEditTime: 2025-04-24 15:51:12
 FilePath: /GoogleModelProcess/mesh_functions.py
 Description: 
 '''
@@ -172,6 +172,66 @@ def simplify_meshes(threshold=0.01, ratio=0.5):
     
     return simplified_count
 
+def remove_islands():
+    """移除孤立的顶点"""
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'MESH':
+            # 确保在对象模式下
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode='OBJECT')
+            
+            # 创建bmesh对象
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            
+            # 获取所有连通的顶点组
+            islands = []
+            verts = set(bm.verts[:])
+            
+            while verts:
+                # 从剩余顶点中取一个作为起点
+                start = verts.pop()
+                island = {start}
+                to_process = {start}
+                
+                # 广度优先搜索找到所有相连的顶点
+                while to_process:
+                    current = to_process.pop()
+                    # 遍历当前顶点的所有相邻顶点
+                    for edge in current.link_edges:
+                        other = edge.other_vert(current)
+                        if other in verts:
+                            verts.remove(other)
+                            island.add(other)
+                            to_process.add(other)
+                
+                islands.append(island)
+            
+            # 找到最大的连通组（主要网格）
+            if islands:
+                main_island = max(islands, key=len)
+                
+                # 收集需要删除的顶点（不在主要网格中的顶点）
+                verts_to_remove = []
+                for island in islands:
+                    if island is not main_island:
+                        verts_to_remove.extend(list(island))
+                
+                # 删除孤立的顶点
+                if verts_to_remove:
+                    bmesh.ops.delete(bm, geom=verts_to_remove, context='VERTS')
+                    
+                    # 更新mesh
+                    bm.to_mesh(obj.data)
+                    obj.data.update()
+                    
+                    print(f"从对象 '{obj.name}' 中删除了 {len(verts_to_remove)} 个孤立顶点")
+            
+            print(f"岛个数：{len(islands)}")
+            
+            # 清理bmesh
+            bm.free()
 
 if __name__ == "__main__":
-    remove_vertices_below_height("Combined_Mesh", 0.5)
+    # remove_vertices_below_height("Combined_Mesh", 0.5)
+    remove_islands()

@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-23 17:46:14
 LastEditors: Leili
-LastEditTime: 2025-04-23 19:00:53
+LastEditTime: 2025-04-24 10:46:03
 FilePath: /GoogleModelProcess/mesh_functions.py
 Description: 
 '''
@@ -79,23 +79,36 @@ def remove_vertices_below_height(obj_name, height_threshold):
     # 收集最终需要删除的顶点
     verts_to_remove = set()
     
+    # 创建一个字典来存储每个xy位置的顶点
+    xy_positions = {}
+    
+    # 将所有顶点按xy位置分组
+    tolerance = 0.01  # xy坐标的容差值
+    for vert in bm.verts:
+        world_vert_co = obj.matrix_world @ vert.co
+        # 将xy坐标四舍五入到指定精度，用作字典键
+        xy_key = (round(world_vert_co.x/tolerance)*tolerance, 
+                 round(world_vert_co.y/tolerance)*tolerance)
+        if xy_key not in xy_positions:
+            xy_positions[xy_key] = []
+        xy_positions[xy_key].append(vert)
+    
     # 检查每个低于阈值的顶点
     for vert in vertices_below_threshold:
         world_vert_co = obj.matrix_world @ vert.co
-        has_upper_connection = False
+        xy_key = (round(world_vert_co.x/tolerance)*tolerance, 
+                 round(world_vert_co.y/tolerance)*tolerance)
         
-        # 检查与该顶点相连的所有边
-        for edge in vert.link_edges:
-            other_vert = edge.other_vert(vert)
+        # 检查相同xy位置是否有高于阈值的顶点
+        has_upper_vertex = False
+        for other_vert in xy_positions[xy_key]:
             other_vert_co = obj.matrix_world @ other_vert.co
-            
-            # 如果连接的顶点在当前顶点上方且高于阈值，则保留当前顶点
-            if other_vert in vertices_above_threshold and other_vert_co.z > world_vert_co.z:
-                has_upper_connection = True
+            if other_vert in vertices_above_threshold:
+                has_upper_vertex = True
                 break
         
-        # 如果没有找到上方的连接点，则标记为删除
-        if not has_upper_connection:
+        # 如果该xy位置没有高于阈值的顶点，则标记为删除
+        if not has_upper_vertex:
             verts_to_remove.add(vert)
     
     # 删除收集到的顶点

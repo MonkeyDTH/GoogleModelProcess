@@ -5,6 +5,7 @@ import folium
 import math
 import googlemaps
 from datetime import datetime
+import numpy as np
 
 def download_osm_data_by_address(address, distance=1000, tags=None):
     """
@@ -73,6 +74,60 @@ def get_coordinates_from_google(address, api_key):
     except Exception as e:
         raise Exception(f"Google Maps API错误: {str(e)}")
 
+def create_building_obj(building_data, output_file):
+    """
+    从建筑物轮廓创建OBJ文件
+    :param building_data: 包含建筑物数据的GeoDataFrame
+    :param output_file: 输出的OBJ文件路径
+    """
+    # 获取建筑物高度（如果没有高度信息，使用默认值10米）
+    height = float(building_data.get('height', building_data.get('building:height', 10.0)))
+    
+    # 获取建筑物轮廓坐标
+    if isinstance(building_data.geometry, Polygon):
+        coords = list(building_data.geometry.exterior.coords)
+    else:
+        raise ValueError("建筑物轮廓必须是多边形")
+    
+    # 创建顶点列表
+    vertices = []
+    # 底面顶点
+    for x, y in coords[:-1]:  # 去掉最后一个重复点
+        vertices.append((x, y, 0))
+    # 顶面顶点
+    for x, y in coords[:-1]:
+        vertices.append((x, y, height))
+    
+    # 创建面列表
+    faces = []
+    n = len(coords) - 1  # 多边形顶点数
+    
+    # 底面
+    bottom = list(range(1, n+1))
+    faces.append(bottom)
+    
+    # 顶面
+    top = list(range(n+1, 2*n+1))
+    faces.append(top[::-1])  # 反向以确保法向朝上
+    
+    # 侧面
+    for i in range(n):
+        v1 = i + 1
+        v2 = (i + 1) % n + 1
+        v3 = v2 + n
+        v4 = v1 + n
+        faces.append([v1, v2, v3, v4])
+    
+    # 写入OBJ文件
+    with open(output_file, 'w') as f:
+        # 写入顶点
+        for x, y, z in vertices:
+            f.write(f'v {x} {y} {z}\n')
+        
+        # 写入面
+        for face in faces:
+            f.write('f ' + ' '.join(str(i) for i in face) + '\n')
+
 def main(api_key, clear_cache=False):
     """
     主函数
@@ -118,16 +173,20 @@ def main(api_key, clear_cache=False):
             # 保存数据到osm目录
             save_osm_data(building_data, 'osm/target_building.geojson')
             
+            # 创建3D模型并保存为OBJ文件
+            create_building_obj(nearest_building, 'osm/target_building.obj')
+            
             # 可视化数据并保存到osm目录
             visualize_osm_data(building_data, center_point=center_point, 
                              save_path='osm/target_building_map.html')
             
             print("数据处理完成！")
             print("建筑物轮廓已保存到：osm/target_building.geojson")
+            print("3D模型已保存到：osm/target_building.obj")
             print("可视化地图已保存到：osm/target_building_map.html")
         else:
             print("未找到目标建筑物")
-        
+            
         # 根据设置决定是否清理缓存
         if clear_cache:
             ox.settings.cache_folder = ''  # 禁用缓存

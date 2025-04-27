@@ -20,15 +20,80 @@ def download_osm_data_by_address(address, distance=1000, tags=None):
     # 获取坐标
     lat, lon = geolocator[0], geolocator[1]
     
-    # 使用place参数下载数据
-    if tags is None:
-        # 默认下载道路网络
-        G = ox.graph_from_point((lat, lon), dist=distance, network_type='drive')
-    else:
-        # 使用点和距离下载数据
-        gdf = ox.features_from_point((lat, lon), tags=tags, dist=distance)
-        return gdf
-    return G
+    # 只获取建筑物轮廓
+    tags = {'building': True}
+    
+    # 使用点和距离下载数据
+    gdf = ox.features_from_point((lat, lon), tags=tags, dist=distance)
+    
+    # 过滤出最近的建筑物
+    if not gdf.empty:
+        # 创建中心点
+        center = Point(lon, lat)
+        
+        # 将数据转换为UTM投影坐标系
+        utm_zone = int(math.floor((lon + 180) / 6) + 1)
+        utm_crs = f'EPSG:326{utm_zone:02d}' if lat >= 0 else f'EPSG:327{utm_zone:02d}'
+        
+        # 转换坐标系
+        gdf_proj = gdf.to_crs(utm_crs)
+        center_proj = gpd.GeoSeries([center], crs=gdf.crs).to_crs(utm_crs)[0]
+        
+        # 在投影坐标系中计算距离
+        gdf_proj['distance'] = gdf_proj.geometry.distance(center_proj)
+        
+        # 获取最近的建筑物
+        nearest_building = gdf_proj.sort_values('distance').iloc[0]
+        
+        # 返回单个建筑物的GeoDataFrame，转回原始坐标系
+        return gpd.GeoDataFrame([nearest_building], geometry='geometry', crs=utm_crs).to_crs(gdf.crs)
+    
+    return gdf
+
+def main(clear_cache=False):
+    """
+    主函数
+    :param clear_cache: 是否在处理完成后清理缓存
+    """
+    # 目标地址 - 修改为更精确的地址格式
+    address = "10912 S Yukon Ave, Inglewood, CA 90303"
+    
+    try:
+        # 创建osm目录（如果不存在）
+        import os
+        os.makedirs('osm', exist_ok=True)
+        
+        # 获取地理编码
+        geolocator = ox.geocode(address)
+        center_point = (geolocator[0], geolocator[1])
+        
+        # 下载建筑物数据（搜索范围设置为100米，以确保获取目标建筑）
+        building_data = download_osm_data_by_address(address, distance=100)
+        
+        if not building_data.empty:
+            # 保存数据到osm目录
+            save_osm_data(building_data, 'osm/target_building.geojson')
+            
+            # 可视化数据并保存到osm目录
+            visualize_osm_data(building_data, center_point=center_point, 
+                             save_path='osm/target_building_map.html')
+            
+            print("数据处理完成！")
+            print("建筑物轮廓已保存到：osm/target_building.geojson")
+            print("可视化地图已保存到：osm/target_building_map.html")
+        else:
+            print("未找到目标建筑物")
+        
+        # 根据设置决定是否清理缓存
+        if clear_cache:
+            ox.settings.cache_folder = ''  # 禁用缓存
+            if os.path.exists(os.path.expanduser('~/.cache/osmnx')):
+                import shutil
+                shutil.rmtree(os.path.expanduser('~/.cache/osmnx'))
+                print("缓存已清理")
+        
+    except Exception as e:
+        print(f"发生错误：{str(e)}")
 
 def save_osm_data(data, filename):
     """
@@ -75,37 +140,6 @@ def visualize_osm_data(data, center_point=None, save_path=None):
         m.save(save_path)
     return m
 
-def main():
-    # 目标地址
-    address = "10912 Yukon Ave S, Inglewood, CA 90303"
-    
-    # 下载建筑数据
-    tags = {
-        'building': True,
-        'amenity': True,
-        'highway': True,
-        'landuse': True
-    }
-    
-    try:
-        # 获取地理编码（更新为新的方法调用）
-        geolocator = ox.geocode(address)
-        center_point = (geolocator[0], geolocator[1])
-        
-        # 下载周边1000米范围的数据
-        area_data = download_osm_data_by_address(address, distance=1000, tags=tags)
-        
-        # 保存数据
-        save_osm_data(area_data, 'inglewood_area.geojson')
-        
-        # 可视化数据
-        visualize_osm_data(area_data, center_point=center_point, 
-                         save_path='inglewood_area_map.html')
-        
-        print("数据处理完成！请查看生成的地图文件：inglewood_area_map.html")
-        
-    except Exception as e:
-        print(f"发生错误：{str(e)}")
-
 if __name__ == '__main__':
-    main()
+    # 设置是否清理缓存（True表示清理，False表示保留）
+    main(clear_cache=False)

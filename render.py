@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-24 16:43:42
 LastEditors: Leili
-LastEditTime: 2025-04-25 17:14:03
+LastEditTime: 2025-04-27 16:17:32
 FilePath: /GoogleModelProcess/render.py
 Description: 
 '''
@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
     start = time.time()
     # 设置相机动画
-    setup_camera_animation("inglewood 填充", frames=600, radius=18.0, height=12.0)
+    setup_camera_animation("inglewood 填充", frames=1200, radius=18.0, height=12.0)
     
     # 渲染动画
     render_animation("D:/Projects/X/GoogleModelProcess/Render/20250425.mp4")

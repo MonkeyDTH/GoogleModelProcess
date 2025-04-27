@@ -2,13 +2,14 @@
 Author: Leili
 Date: 2025-04-24 16:43:42
 LastEditors: Leili
-LastEditTime: 2025-04-24 17:34:20
+LastEditTime: 2025-04-25 17:14:03
 FilePath: /GoogleModelProcess/render.py
 Description: 
 '''
 import bpy
 import math
 from mathutils import Vector
+import time
 
 def setup_camera_animation(target_obj_name, frames=250, radius=5.0, height=2.0):
     """设置相机环绕动画
@@ -115,7 +116,7 @@ def setup_camera_animation(target_obj_name, frames=250, radius=5.0, height=2.0):
     area.energy = 300.0  # 区域光强度
     area.size = 5.0  # 光源大小
 
-def render_animation(output_path, resolution_x=1920, resolution_y=1080, fps=30):
+def render_animation(output_path, resolution_x=1920, resolution_y=1080, fps=60):
     """渲染动画
     
     Args:
@@ -141,8 +142,12 @@ def render_animation(output_path, resolution_x=1920, resolution_y=1080, fps=30):
     bpy.ops.render.render(animation=True)
 
 if __name__ == "__main__":
+
+    start = time.time()
     # 设置相机动画
-    setup_camera_animation("Combined_Mesh", frames=250, radius=15.0, height=5.0)
+    setup_camera_animation("inglewood 填充", frames=600, radius=18.0, height=12.0)
     
     # 渲染动画
-    render_animation("D:/Projects/X/GoogleModelProcess/Render/output.mp4")
+    render_animation("D:/Projects/X/GoogleModelProcess/Render/20250425.mp4")
+    time_spent = time.time() - start
+    print(f"渲染完成，耗时 {time_spent:.2f} 秒")

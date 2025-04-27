@@ -2,53 +2,49 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-27 15:51:53
+LastEditTime: 2025-04-27 15:55:17
 FilePath: /GoogleModelProcess/open_google_map.py
 Description: 
 '''
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import WebDriverException
-import time
+import os
+import subprocess
+import winreg
 
 # 指定经纬度和缩放
 lat = 33.93643011099182
 lng = -118.33465519884332
-zoom = 19
+zoom = 21
 
-# 直接使用卫星视图的URL
+# 构建卫星视图的URL
 url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
 
-# 启动Chrome（需提前安装chromedriver且版本匹配）
-driver = webdriver.Chrome()
-driver.get(url)
-
-# 等待页面加载完成
-wait = WebDriverWait(driver, 10)
-
-try:
-    # 等待地图加载完成
-    time.sleep(5)
-    
-    print("已打开卫星地图视图，按 Ctrl+C 可关闭浏览器，或直接关闭浏览器窗口退出...")
-    
-    # 保持浏览器窗口打开，并检查浏览器是否被关闭
-    while True:
-        try:
-            # 尝试获取当前窗口句柄，如果浏览器被关闭会抛出异常
-            driver.current_window_handle
-            time.sleep(1)
-        except WebDriverException:
-            print("浏览器窗口已被关闭，程序退出...")
-            break
-except KeyboardInterrupt:
-    print("正在关闭浏览器...")
-except Exception as e:
-    print(f"发生错误: {str(e)}")
-finally:
+def get_chrome_path():
     try:
-        driver.quit()
-    except:
-        pass
+        # 尝试从注册表获取Chrome路径
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe")
+        chrome_path = winreg.QueryValue(key, None)
+        winreg.CloseKey(key)
+        return chrome_path
+    except WindowsError:
+        # 如果注册表查找失败，尝试常见安装路径
+        paths = [
+            os.path.expandvars(r'%PROGRAMFILES%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe')
+        ]
+        for path in paths:
+            if os.path.exists(path):
+                return path
+    return None
+
+chrome_path = get_chrome_path()
+
+if chrome_path:
+    try:
+        # 启动Chrome并打开URL
+        subprocess.Popen([chrome_path, url])
+        print(f"已打开卫星地图视图，请在浏览器中查看...")
+    except Exception as e:
+        print(f"启动Chrome时发生错误: {str(e)}")
+else:
+    print("未找到Chrome浏览器，请确保Chrome已安装。")

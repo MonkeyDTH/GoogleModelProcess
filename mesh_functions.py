@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-23 17:46:14
 LastEditors: Leili
-LastEditTime: 2025-04-24 15:51:12
+LastEditTime: 2025-04-27 15:20:55
 FilePath: /GoogleModelProcess/mesh_functions.py
 Description: 
 '''
@@ -232,6 +232,34 @@ def remove_islands():
             # 清理bmesh
             bm.free()
 
+def adjust_mesh_z_to_zero(obj_name):
+    """调整mesh的z坐标，使其最低点达到0"""
+    # 在场景中获取物体
+    obj = bpy.data.objects.get(obj_name)
+    if obj is None:
+        raise ValueError(f"未能在场景中找到名为 '{obj_name}' 的物体")
+    
+    # 找到最低的z坐标
+    lowest_z = float('inf')
+    for v in obj.data.vertices:
+        # 将顶点坐标转换到世界空间
+        world_vert_co = obj.matrix_world @ v.co
+        if world_vert_co.z < lowest_z:
+            lowest_z = world_vert_co.z
+    
+    # 计算需要上移的距离
+    z_offset = -lowest_z
+    
+    # 调整物体位置
+    obj.location.z += z_offset
+    
+    print(f"已将物体 '{obj_name}' 上移 {z_offset:.4f} 单位，使其最低点位于z=0")
+
+
+
 if __name__ == "__main__":
-    # remove_vertices_below_height("Combined_Mesh", 0.5)
-    remove_islands()
+    # remove_vertices_below_height("Combined_Mesh", -0.35)
+    # remove_islands()
+
+    for i in range(1, 9):
+        adjust_mesh_z_to_zero(f"Mesh{i}")

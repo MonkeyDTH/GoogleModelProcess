@@ -3,6 +3,8 @@ import geopandas as gpd
 from shapely.geometry import Point, Polygon, box
 import folium
 import math
+import googlemaps
+from datetime import datetime
 
 def download_osm_data_by_address(address, distance=1000, tags=None):
     """
@@ -50,12 +52,34 @@ def download_osm_data_by_address(address, distance=1000, tags=None):
     
     return gdf
 
-def main(clear_cache=False):
+def get_coordinates_from_google(address, api_key):
+    """
+    使用Google Maps API获取地址的经纬度
+    :param address: 地址字符串
+    :param api_key: Google Maps API密钥
+    :return: (纬度, 经度)元组
+    """
+    # 创建Google Maps客户端
+    gmaps = googlemaps.Client(key=api_key)
+    
+    # 地理编码
+    try:
+        geocode_result = gmaps.geocode(address)
+        if geocode_result:
+            location = geocode_result[0]['geometry']['location']
+            return location['lat'], location['lng']
+        else:
+            raise ValueError("无法找到该地址")
+    except Exception as e:
+        raise Exception(f"Google Maps API错误: {str(e)}")
+
+def main(api_key, clear_cache=False):
     """
     主函数
+    :param api_key: Google Maps API密钥
     :param clear_cache: 是否在处理完成后清理缓存
     """
-    # 目标地址 - 修改为更精确的地址格式
+    # 目标地址
     address = "10912 S Yukon Ave, Inglewood, CA 90303"
     
     try:
@@ -63,14 +87,34 @@ def main(clear_cache=False):
         import os
         os.makedirs('osm', exist_ok=True)
         
-        # 获取地理编码
-        geolocator = ox.geocode(address)
-        center_point = (geolocator[0], geolocator[1])
+        # 使用Google Maps API获取精确坐标
+        lat, lon = get_coordinates_from_google(address, api_key)
+        center_point = (lat, lon)
+        print(f"Google Maps 坐标: ({lon}, {lat})")
         
-        # 下载建筑物数据（搜索范围设置为100米，以确保获取目标建筑）
-        building_data = download_osm_data_by_address(address, distance=100)
+        # 下载建筑物数据（搜索范围设置为50米，以确保获取目标建筑）
+        tags = {'building': True}
+        gdf = ox.features_from_point((lat, lon), tags=tags, dist=50)
         
-        if not building_data.empty:
+        if not gdf.empty:
+            # 创建中心点
+            center = Point(lon, lat)
+            
+            # 将数据转换为UTM投影坐标系
+            utm_zone = int(math.floor((lon + 180) / 6) + 1)
+            utm_crs = f'EPSG:326{utm_zone:02d}' if lat >= 0 else f'EPSG:327{utm_zone:02d}'
+            
+            # 转换坐标系
+            gdf_proj = gdf.to_crs(utm_crs)
+            center_proj = gpd.GeoSeries([center], crs=gdf.crs).to_crs(utm_crs)[0]
+            
+            # 在投影坐标系中计算距离
+            gdf_proj['distance'] = gdf_proj.geometry.distance(center_proj)
+            
+            # 获取最近的建筑物
+            nearest_building = gdf_proj.sort_values('distance').iloc[0]
+            building_data = gpd.GeoDataFrame([nearest_building], geometry='geometry', crs=utm_crs).to_crs(gdf.crs)
+            
             # 保存数据到osm目录
             save_osm_data(building_data, 'osm/target_building.geojson')
             
@@ -141,5 +185,8 @@ def visualize_osm_data(data, center_point=None, save_path=None):
     return m
 
 if __name__ == '__main__':
-    # 设置是否清理缓存（True表示清理，False表示保留）
-    main(clear_cache=False)
+    # 设置Google Maps API密钥
+    API_KEY = 'AIzaSyDLgBT4f31Oo509m9jAdm9Nlx-OOufXg7E'  # 替换为您的API密钥
+    
+    # 运行主程序
+    main(API_KEY, clear_cache=False)

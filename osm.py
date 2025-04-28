@@ -6,6 +6,11 @@ import math
 import googlemaps
 from datetime import datetime
 import numpy as np
+import json
+import os
+import time
+import logging
+from logging.handlers import RotatingFileHandler
 
 def download_osm_data_by_address(address, distance=1000, tags=None):
     """
@@ -128,26 +133,58 @@ def create_building_obj(building_data, output_file):
         for face in faces:
             f.write('f ' + ' '.join(str(i) for i in face) + '\n')
 
-def main(api_key, clear_cache=False):
+def setup_logger(timestamp):
     """
-    主函数
-    :param api_key: Google Maps API密钥
-    :param clear_cache: 是否在处理完成后清理缓存
+    配置日志记录器
     """
-    # 目标地址
-    address = "10912 S Yukon Ave, Inglewood, CA 90303"
+    # 创建日志文件名
+    log_file = f'osm/log/process_log_{timestamp}.log'
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
     
+    # 创建日志记录器
+    logger = logging.getLogger('BuildingProcessor')
+    logger.setLevel(logging.INFO)
+    
+    # 创建格式化器
+    formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # 创建文件处理器
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    
+    # 添加处理器到日志记录器
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger, log_file
+
+def process_single_address(address, api_key, logger):
+    """
+    处理单个地址
+    """
     try:
-        # 创建osm目录（如果不存在）
-        import os
-        os.makedirs('osm', exist_ok=True)
+        logger.info(f"开始处理地址: {address}")
         
         # 使用Google Maps API获取精确坐标
         lat, lon = get_coordinates_from_google(address, api_key)
         center_point = (lat, lon)
-        print(f"Google Maps 坐标: ({lon}, {lat})")
+        logger.info(f"获取到坐标: ({lon}, {lat})")
         
-        # 下载建筑物数据（搜索范围设置为50米，以确保获取目标建筑）
+        # 下载建筑物数据
         tags = {'building': True}
         gdf = ox.features_from_point((lat, lon), tags=tags, dist=50)
         
@@ -170,32 +207,100 @@ def main(api_key, clear_cache=False):
             nearest_building = gdf_proj.sort_values('distance').iloc[0]
             building_data = gpd.GeoDataFrame([nearest_building], geometry='geometry', crs=utm_crs).to_crs(gdf.crs)
             
-            # 保存数据到osm目录
-            save_osm_data(building_data, 'osm/target_building.geojson')
+            # 生成文件名（使用地址作为文件名）
+            file_name = ''.join(c if c.isalnum() else '_' for c in address)
+            file_name = file_name[:50]  # 限制文件名长度
             
-            # 创建3D模型并保存为OBJ文件
-            create_building_obj(nearest_building, 'osm/target_building.obj')
-            
-            # 可视化数据并保存到osm目录
+            # 保存数据到对应目录
+            save_osm_data(building_data, os.path.join('osm/result/geojson', f'{file_name}.geojson'))
+            create_building_obj(nearest_building, os.path.join('osm/result/obj', f'{file_name}.obj'))
             visualize_osm_data(building_data, center_point=center_point, 
-                             save_path='osm/target_building_map.html')
+                             save_path=os.path.join('osm/result/html', f'{file_name}.html'))
             
-            print("数据处理完成！")
-            print("建筑物轮廓已保存到：osm/target_building.geojson")
-            print("3D模型已保存到：osm/target_building.obj")
-            print("可视化地图已保存到：osm/target_building_map.html")
+            logger.info(f"地址 {address} 处理成功")
+            return True, "处理成功"
         else:
-            print("未找到目标建筑物")
+            logger.warning(f"地址 {address} 未找到目标建筑物")
+            return False, "未找到目标建筑物"
             
+    except Exception as e:
+        logger.error(f"处理地址 {address} 时发生错误: {str(e)}", exc_info=True)
+        return False, str(e)
+
+def main(api_key, input_file, clear_cache=False):
+    """
+    主函数 - 批量处理版本
+    """
+    try:
+        # 设置时间戳
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        start_time = time.time()
+        
+        # 确保主输出目录和分类目录存在
+        os.makedirs('osm/result/obj', exist_ok=True)
+        os.makedirs('osm/result/html', exist_ok=True)
+        os.makedirs('osm/result/geojson', exist_ok=True)
+        
+        # 设置日志记录器
+        logger, log_file = setup_logger(timestamp)
+        
+        logger.info("开始执行程序")
+        
+        # 确保osm目录存在
+        os.makedirs('osm', exist_ok=True)
+        
+        # 读取输入的JSON文件
+        with open(input_file, 'r', encoding='utf-8') as f:
+            addresses = json.load(f)
+        
+        if not isinstance(addresses, list):
+            raise ValueError("JSON文件必须包含地址列表")
+        
+        # 初始化统计数据
+        total_count = len(addresses)
+        success_count = 0
+        failed_count = 0
+        
+        logger.info(f"开始批量处理，共有 {total_count} 个地址待处理")
+        
+        # 处理每个地址
+        for index, address in enumerate(addresses, 1):
+            logger.info(f"正在处理第 {index}/{total_count} 个地址")
+            
+            # 处理单个地址（移除了base_dir参数）
+            success, message = process_single_address(address, api_key, logger)
+            
+            # 更新统计数据
+            if success:
+                success_count += 1
+            else:
+                failed_count += 1
+        
+        # 记录最终统计结果
+        logger.info("处理完成！统计结果：")
+        logger.info(f"总地址数: {total_count}")
+        logger.info(f"成功处理: {success_count}")
+        logger.info(f"处理失败: {failed_count}")
+        logger.info(f"成功率: {(success_count/total_count*100):.2f}%")
+        
+        # 计算并记录运行时间
+        end_time = time.time()
+        total_time = end_time - start_time
+        logger.info(f"程序运行时间：{total_time:.1f}秒")
+        
         # 根据设置决定是否清理缓存
         if clear_cache:
-            ox.settings.cache_folder = ''  # 禁用缓存
+            ox.settings.cache_folder = ''
             if os.path.exists(os.path.expanduser('~/.cache/osmnx')):
                 import shutil
                 shutil.rmtree(os.path.expanduser('~/.cache/osmnx'))
-                print("缓存已清理")
+                logger.info("缓存已清理")
+        
+        print(f"处理完成！详细日志已保存到：{log_file}")
         
     except Exception as e:
+        if 'logger' in locals():
+            logger.error(f"发生错误：{str(e)}", exc_info=True)
         print(f"发生错误：{str(e)}")
 
 def save_osm_data(data, filename):
@@ -243,9 +348,13 @@ def visualize_osm_data(data, center_point=None, save_path=None):
         m.save(save_path)
     return m
 
+
 if __name__ == '__main__':
     # 设置Google Maps API密钥
     API_KEY = 'AIzaSyDLgBT4f31Oo509m9jAdm9Nlx-OOufXg7E'  # 替换为您的API密钥
     
+    # 输入文件路径
+    INPUT_FILE = 'addresses.json'  # JSON文件，包含地址列表
+    
     # 运行主程序
-    main(API_KEY, clear_cache=False)
+    main(API_KEY, INPUT_FILE, clear_cache=False)

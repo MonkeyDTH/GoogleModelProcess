@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-28 16:51:40
+LastEditTime: 2025-04-28 17:21:21
 FilePath: /GoogleModelProcess/open_google_map.py
 Description: 
 '''
@@ -119,7 +119,7 @@ def launch_renderdoc_and_inject():
         print(f"已启动RenderDoc")
         
         # 增加初始等待时间
-        time.sleep(8)
+        time.sleep(3)
         
         try:
             from pywinauto.application import Application
@@ -148,8 +148,8 @@ def launch_renderdoc_and_inject():
                     hwnd = main_window.handle
                     
                     # 调整窗口大小和位置
-                    target_width = 800
-                    target_height = 600
+                    target_width = 1600  # 修改为1600
+                    target_height = 900  # 修改为900
                     screen_width = pyautogui.size()[0]
                     screen_height = pyautogui.size()[1]
                     new_left = max(0, int((screen_width - target_width) / 2))
@@ -178,7 +178,27 @@ def launch_renderdoc_and_inject():
             keyboard.send_keys("I")  # 选择Inject into Process
             time.sleep(1)
             keyboard.send_keys("{ENTER}")
-            time.sleep(2)
+            time.sleep(1)
+            
+            # 先点击进程列表以确保焦点在列表上
+            pyautogui.moveTo(new_left + 80, new_top + 550, duration=0.1)  # 调整坐标
+            pyautogui.click()
+            time.sleep(0.5)
+            
+            # 输入搜索内容
+            pyautogui.write('Google  Chrome  Gpu', interval=0.03)  # 使用write方法, 用中文输入法需要打两个空格
+            time.sleep(1)
+
+            # 在进程选择对话框中点击
+            print("尝试在进程列表中选择Chrome GPU进程...")
+            # 点击搜索到的第一个进程
+            pyautogui.moveTo(new_left + 80, new_top + 275, duration=0.1)  # 调整坐标
+            pyautogui.click()
+            time.sleep(0.5)
+            
+            # 按回车确认搜索
+            keyboard.send_keys('{ENTER}')
+            time.sleep(1)
             
             print("已完成注入操作")
             return True

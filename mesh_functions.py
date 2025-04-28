@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-23 17:46:14
 LastEditors: Leili
-LastEditTime: 2025-04-27 15:20:55
+LastEditTime: 2025-04-28 13:32:26
 FilePath: /GoogleModelProcess/mesh_functions.py
 Description: 
 '''
@@ -255,11 +255,89 @@ def adjust_mesh_z_to_zero(obj_name):
     
     print(f"已将物体 '{obj_name}' 上移 {z_offset:.4f} 单位，使其最低点位于z=0")
 
+def remove_vertices_outside_box(obj_name, min_x, max_x, min_y, max_y):
+    """删除网格中XY坐标在指定边界框外的顶点
+    Args:
+        obj_name: 要处理的网格对象名称
+        min_x: 边界框最小X坐标
+        max_x: 边界框最大X坐标
+        min_y: 边界框最小Y坐标
+        max_y: 边界框最大Y坐标
+    """
+    # 在场景中获取物体
+    obj = bpy.data.objects.get(obj_name)
+    if obj is None:
+        raise ValueError(f"未能在场景中找到名为 '{obj_name}' 的物体")
+    
+    # 创建bmesh对象
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    
+    # 收集需要删除的顶点
+    verts_to_remove = []
+    for vert in bm.verts:
+        # 将顶点坐标转换到世界空间
+        world_vert_co = obj.matrix_world @ vert.co
+        # 检查XY坐标是否在边界框外
+        if (world_vert_co.x < min_x or world_vert_co.x > max_x or
+            world_vert_co.y < min_y or world_vert_co.y > max_y):
+            verts_to_remove.append(vert)
+    
+    # 删除收集到的顶点
+    if verts_to_remove:
+        bmesh.ops.delete(bm, geom=verts_to_remove, context='VERTS')
+        print(f"已删除 {len(verts_to_remove)} 个在边界框外的顶点")
+    
+    # 更新mesh
+    bm.to_mesh(obj.data)
+    obj.data.update()
+    
+    # 清理bmesh
+    bm.free()
+
+def remove_unselected_vertices():
+    """删除当前网格中所有未被选中的顶点"""
+    # 获取当前活动对象
+    obj = bpy.context.active_object
+    if obj is None or obj.type != 'MESH':
+        print("请先选择一个网格对象")
+        return
+    
+    # 确保在编辑模式下
+    if obj.mode != 'EDIT':
+        print("请在编辑模式下使用此功能")
+        return
+    
+    # 创建bmesh对象
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    
+    # 收集未选中的顶点
+    verts_to_remove = [v for v in bm.verts if not v.select]
+    
+    if not verts_to_remove:
+        print("没有找到未选中的顶点")
+        return
+    
+    # 删除未选中的顶点
+    bmesh.ops.delete(bm, geom=verts_to_remove, context='VERTS')
+    
+    # 更新网格
+    bmesh.update_edit_mesh(obj.data)
+    
+    print(f"已删除 {len(verts_to_remove)} 个未选中的顶点")
 
 
 if __name__ == "__main__":
+    
     # remove_vertices_below_height("Combined_Mesh", -0.35)
     # remove_islands()
 
-    for i in range(1, 9):
-        adjust_mesh_z_to_zero(f"Mesh{i}")
+    # for i in range(1, 9):
+    #     adjust_mesh_z_to_zero(f"Mesh{i}")
+
+    # length_unit = 2
+    # remove_vertices_outside_box("Combined_Mesh", -0.5, 1, -1.8, 0.5)
+
+    remove_unselected_vertices()

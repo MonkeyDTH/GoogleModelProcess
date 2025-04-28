@@ -1,7 +1,7 @@
 bl_info = {
     "name": "网格工具",
     "author": "Leili",
-    "version": (1, 0),
+    "version": (1, 0, 1),
     "blender": (2, 80, 0),
     "location": "视图3D > 工具栏",
     "description": "网格处理工具集：合并、优化、居中等",
@@ -9,6 +9,7 @@ bl_info = {
 }
 
 import bpy
+import bmesh
 from bpy.types import Operator, Panel
 from mathutils import Vector
 
@@ -117,6 +118,43 @@ class MESH_OT_center_origin(Operator):
         self.report({'INFO'}, "网格已居中到原点")
         return {'FINISHED'}
 
+class MESH_OT_remove_unselected(Operator):
+    """删除当前网格中所有未被选中的顶点"""
+    bl_idname = "mesh.remove_unselected"
+    bl_label = "删除未选中顶点"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        obj = context.active_object
+        if obj is None or obj.type != 'MESH':
+            self.report({'WARNING'}, "请先选择一个网格对象")
+            return {'CANCELLED'}
+        
+        # 确保在编辑模式下
+        if obj.mode != 'EDIT':
+            self.report({'WARNING'}, "请在编辑模式下使用此功能")
+            return {'CANCELLED'}
+        
+        # 创建bmesh对象
+        bm = bmesh.from_edit_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+        
+        # 收集未选中的顶点
+        verts_to_remove = [v for v in bm.verts if not v.select]
+        
+        if not verts_to_remove:
+            self.report({'INFO'}, "没有找到未选中的顶点")
+            return {'FINISHED'}
+        
+        # 删除未选中的顶点
+        bmesh.ops.delete(bm, geom=verts_to_remove, context='VERTS')
+        
+        # 更新网格
+        bmesh.update_edit_mesh(obj.data)
+        
+        self.report({'INFO'}, f"已删除 {len(verts_to_remove)} 个未选中的顶点")
+        return {'FINISHED'}
+
 class VIEW3D_PT_mesh_tools(Panel):
     """网格工具面板"""
     bl_label = "网格工具"
@@ -136,12 +174,16 @@ class VIEW3D_PT_mesh_tools(Panel):
         
         row = layout.row()
         row.operator("mesh.center_origin", text="居中到原点")
+        
+        row = layout.row()
+        row.operator("mesh.remove_unselected", text="删除未选中顶点")
 
 # 注册
 classes = (
     MESH_OT_merge_all,
     MESH_OT_optimize,
     MESH_OT_center_origin,
+    MESH_OT_remove_unselected,  # 添加新的类
     VIEW3D_PT_mesh_tools,
 )
 
@@ -181,6 +223,16 @@ def register():
         kmi = km.keymap_items.new(
             MESH_OT_center_origin.bl_idname,
             type='C',
+            value='PRESS',
+            ctrl=True,
+            shift=True
+        )
+        addon_keymaps.append((km, kmi))
+        
+        # 删除未选中顶点快捷键
+        kmi = km.keymap_items.new(
+            MESH_OT_remove_unselected.bl_idname,
+            type='D',
             value='PRESS',
             ctrl=True,
             shift=True

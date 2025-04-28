@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-28 14:50:50
+LastEditTime: 2025-04-28 16:51:40
 FilePath: /GoogleModelProcess/open_google_map.py
 Description: 
 '''
@@ -94,7 +94,7 @@ def get_chrome_pid(lat=None, lng=None, zoom=21):
 
 def launch_renderdoc_and_inject():
     """
-    启动RenderDoc
+    启动RenderDoc并点击File菜单，然后点击Inject into Process并选择指定进程
     """
     # RenderDoc默认安装路径
     renderdoc_path = r'C:\Program Files\RenderDoc\qrenderdoc.exe'
@@ -117,24 +117,95 @@ def launch_renderdoc_and_inject():
         # 启动RenderDoc
         subprocess.Popen(cmd)
         print(f"已启动RenderDoc")
-        return True
         
+        # 增加初始等待时间
+        time.sleep(8)
+        
+        try:
+            from pywinauto.application import Application
+            from pywinauto.timings import wait_until, Timings
+            from pywinauto import keyboard  # 使用pywinauto的keyboard
+            import win32gui
+            import win32con
+            import pyautogui  # 添加pyautogui导入
+            
+            # 增加默认超时时间
+            Timings.window_find_timeout = 30
+            Timings.app_connect_timeout = 30
+            Timings.exists_timeout = 30
+            
+            # 尝试多次连接到RenderDoc窗口
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    print(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
+                    app = Application(backend="uia").connect(path=renderdoc_path, timeout=20)
+                    main_window = app.window(title_re=".*RenderDoc.*")
+                    main_window.wait('visible', timeout=20)
+                    print("成功连接到RenderDoc窗口")
+                    
+                    # 获取窗口句柄
+                    hwnd = main_window.handle
+                    
+                    # 调整窗口大小和位置
+                    target_width = 800
+                    target_height = 600
+                    screen_width = pyautogui.size()[0]
+                    screen_height = pyautogui.size()[1]
+                    new_left = max(0, int((screen_width - target_width) / 2))
+                    new_top = max(0, int((screen_height - target_height) / 2))
+                    
+                    # 调整窗口大小
+                    win32gui.MoveWindow(hwnd, new_left, new_top, target_width, target_height, True)
+                    win32gui.SetForegroundWindow(hwnd)
+                    time.sleep(2)
+                    
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        print(f"连接失败: {str(e)}，等待5秒后重试...")
+                        time.sleep(5)
+                    else:
+                        raise Exception("无法连接到RenderDoc窗口，请确保程序已正确启动")
+            
+            # 点击File菜单
+            print("尝试点击File菜单...")
+            keyboard.send_keys("%{F}")  # Alt+F
+            time.sleep(2)
+            
+            # 选择Inject into Process
+            print("尝试选择Inject into Process...")
+            keyboard.send_keys("I")  # 选择Inject into Process
+            time.sleep(1)
+            keyboard.send_keys("{ENTER}")
+            time.sleep(2)
+            
+            print("已完成注入操作")
+            return True
+            
+        except ImportError:
+            print("请先安装必要的库: pip install pywinauto pyautogui")
+            return False
+        except Exception as e:
+            print(f"操作RenderDoc窗口时发生错误: {str(e)}")
+            return False
+            
     except Exception as e:
         print(f"启动RenderDoc时发生错误: {str(e)}")
         return False
 
 if __name__ == "__main__":
     # 设置建筑地址
-    address = "Coni’Seafood"
+    address = "10912 Yukon Ave S"
     
     try:
-        # 获取经纬度
-        lat, lng = get_coordinates_from_google(address, API_KEY)
-        print(f"地址: {address}")
-        print(f"经纬度: ({lat}, {lng})")
+        # # 获取经纬度
+        # lat, lng = get_coordinates_from_google(address, API_KEY)
+        # print(f"地址: {address}")
+        # print(f"经纬度: ({lat}, {lng})")
         
-        # 执行启动并获取进程ID
-        chrome_pids = get_chrome_pid(lat, lng)
+        # # 执行启动并获取进程ID
+        # chrome_pids = get_chrome_pid(lat, lng)
         # 启动RenderDoc
         launch_renderdoc_and_inject()
         

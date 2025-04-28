@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-27 18:45:08
+LastEditTime: 2025-04-28 14:50:50
 FilePath: /GoogleModelProcess/open_google_map.py
 Description: 
 '''
@@ -10,19 +10,45 @@ import os
 import subprocess
 import time
 import psutil
+import googlemaps
 
-# 指定经纬度和缩放
-lat = 33.93631
-lng = -118.33468
-zoom = 21
+# Google Maps API密钥
+API_KEY = "AIzaSyDLgBT4f31Oo509m9jAdm9Nlx-OOufXg7E"  # 请替换为您的API密钥
 
-# 构建卫星视图的URL
-url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
+def get_coordinates_from_google(address, api_key):
+    """
+    使用Google Maps API获取地址的经纬度
+    :param address: 地址字符串
+    :param api_key: Google Maps API密钥
+    :return: (纬度, 经度)元组
+    """
+    # 创建Google Maps客户端
+    gmaps = googlemaps.Client(key=api_key)
+    
+    # 地理编码
+    try:
+        geocode_result = gmaps.geocode(address)
+        if geocode_result:
+            location = geocode_result[0]['geometry']['location']
+            return location['lat'], location['lng']
+        else:
+            raise ValueError("无法找到该地址")
+    except Exception as e:
+        raise Exception(f"Google Maps API错误: {str(e)}")
 
-# Chrome路径
-chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-
-def get_chrome_pid():
+def get_chrome_pid(lat=None, lng=None, zoom=21):
+    """
+    打开指定经纬度的Google地图
+    :param lat: 纬度
+    :param lng: 经度
+    :param zoom: 缩放级别
+    """
+    # 构建卫星视图的URL
+    url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
+    
+    # Chrome路径
+    chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+    
     # 获取启动前的Chrome进程列表
     chrome_processes_before = {
         proc.pid: proc.cmdline() 
@@ -66,11 +92,9 @@ def get_chrome_pid():
         print(f"未找到Chrome浏览器: {chrome_path}")
         return set()
 
-def launch_renderdoc_and_inject(chrome_pid):
+def launch_renderdoc_and_inject():
     """
-    启动RenderDoc并设置注入到指定的Chrome进程
-    Args:
-        chrome_pid: Chrome浏览器的进程ID
+    启动RenderDoc
     """
     # RenderDoc默认安装路径
     renderdoc_path = r'C:\Program Files\RenderDoc\qrenderdoc.exe'
@@ -81,7 +105,7 @@ def launch_renderdoc_and_inject(chrome_pid):
         
     try:
         # 构建PowerShell命令字符串
-        powershell_command = f'Start-Process -FilePath "{renderdoc_path}" -ArgumentList "--inject-pid","{chrome_pid}","--capture-all" -Verb RunAs'
+        powershell_command = f'Start-Process -FilePath "{renderdoc_path}" -Verb RunAs'
         
         # 构建启动命令
         cmd = [
@@ -92,7 +116,7 @@ def launch_renderdoc_and_inject(chrome_pid):
         
         # 启动RenderDoc
         subprocess.Popen(cmd)
-        print(f"已启动RenderDoc并设置注入到进程ID: {chrome_pid}")
+        print(f"已启动RenderDoc")
         return True
         
     except Exception as e:
@@ -100,12 +124,19 @@ def launch_renderdoc_and_inject(chrome_pid):
         return False
 
 if __name__ == "__main__":
-    # 执行启动并获取进程ID
-    chrome_pids = get_chrome_pid()
+    # 设置建筑地址
+    address = "Coni’Seafood"
     
-    # 如果成功获取到Chrome进程ID，则启动RenderDoc并注入
-    if chrome_pids:
-        for pid in chrome_pids:
-            launch_renderdoc_and_inject(pid)
-    
-    # launch_renderdoc_and_inject(pid)
+    try:
+        # 获取经纬度
+        lat, lng = get_coordinates_from_google(address, API_KEY)
+        print(f"地址: {address}")
+        print(f"经纬度: ({lat}, {lng})")
+        
+        # 执行启动并获取进程ID
+        chrome_pids = get_chrome_pid(lat, lng)
+        # 启动RenderDoc
+        launch_renderdoc_and_inject()
+        
+    except Exception as e:
+        print(f"错误: {str(e)}")

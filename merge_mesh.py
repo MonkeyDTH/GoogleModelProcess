@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-23
 LastEditors: Leili
-LastEditTime: 2025-04-23 19:01:34
+LastEditTime: 2025-04-28 11:09:31
 FilePath: /GoogleModelProcess/merge_mesh.py
 Description: 合并场景中所有的Mesh对象
 '''
@@ -71,7 +71,6 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
     
     return bpy.context.view_layer.objects.active
 
-
 def optimize_mesh(mesh_object=None):
     """ 优化网格, 合并接近的顶点 """
     if mesh_object is None:
@@ -102,22 +101,73 @@ def optimize_mesh(mesh_object=None):
     mesh_data = mesh_object.data
     print(f"优化后顶点数: {len(mesh_data.vertices)}")
 
+def center_mesh_origin(mesh_object=None):
+    """将指定网格对象的XY中心移动到原点，Z轴保持最低点在0"""
+    if mesh_object is None:
+        if bpy.context.selected_objects:
+            mesh_object = bpy.context.selected_objects[0]
+        else:
+            print("没有选中任何对象，请先选择一个网格对象")
+            return
+
+    if mesh_object.type != 'MESH':
+        print(f"选中的对象 '{mesh_object.name}' 不是网格类型")
+        return
+
+    print(f"正在将网格 '{mesh_object.name}' 的XY中心移动到原点...")
+    # 确保在对象模式下
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # 计算几何中心和最低点（所有顶点的平均位置）
+    mesh_data = mesh_object.data
+    vertex_sum = Vector((0, 0, 0))
+    min_z = float('inf')
+    
+    # 计算XY中心和Z轴最低点
+    for vertex in mesh_data.vertices:
+        # 将顶点坐标从局部空间转换到世界空间
+        world_co = mesh_object.matrix_world @ vertex.co
+        vertex_sum += Vector((world_co.x, world_co.y, 0))  # 只考虑XY坐标
+        min_z = min(min_z, world_co.z)  # 记录最低Z坐标
+    
+    # 计算平均位置（几何中心）
+    vertex_count = len(mesh_data.vertices)
+    if vertex_count > 0:
+        geometric_center = vertex_sum / vertex_count
+        # 只使用XY平移，Z设置为-最低点（这样最低点会在0）
+        translation_vector = Vector((-geometric_center.x, -geometric_center.y, -min_z))
+    else:
+        print("网格没有顶点")
+        return
+
+    # 应用移动到所有顶点
+    for vertex in mesh_data.vertices:
+        # 先转换到世界空间
+        world_co = mesh_object.matrix_world @ vertex.co
+        # 应用平移
+        new_co = world_co + translation_vector
+        # 转换回局部空间
+        vertex.co = mesh_object.matrix_world.inverted() @ new_co
+
+    # 更新网格数据
+    mesh_data.update()
+
+    # 将对象自身的位置重置到原点（因为顶点已经移动了）
+    mesh_object.location = (0.0, 0.0, 0.0)
+
+    print(f"网格 '{mesh_object.name}' 已完成居中")
+
 
 # 执行合并操作
 if __name__ == "__main__":
     merged_mesh = merge_all_meshes()
     if merged_mesh:
         print(f"所有网格已成功合并为: {merged_mesh.name}")
+        # 合并后居中
+        center_mesh_origin(merged_mesh)
     else:
         print("合并操作失败")
 
-    count_meshes()
+    count_meshes() # 可以取消注释以查看最终统计信息
 
-    # 询问用户是否要分割网格
-    # split_objects = split_combined_mesh()
-    # if split_objects:
-    #     print(f"网格已成功分割为 {len(split_objects)} 个独立实体")
-    # else:
-    #     print("分割操作失败")
-    
-    # optimize_mesh()
+    # optimize_mesh() # 可以取消注释以进行优化

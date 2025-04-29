@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-28 17:21:21
+LastEditTime: 2025-04-29 10:37:04
 FilePath: /GoogleModelProcess/open_google_map.py
 Description: 
 '''
@@ -91,6 +91,32 @@ def get_chrome_pid(lat=None, lng=None, zoom=21):
     else:
         print(f"未找到Chrome浏览器: {chrome_path}")
         return set()
+
+def activate_window(title):
+    """
+    激活包含"Google Chrome Gpu"的窗口
+    """
+    # 在Windows上使用pygetwindow查找窗口
+    try:
+        import pygetwindow as gw
+        # 尝试查找包含"Google Chrome Gpu"的窗口
+        chrome_gpu_windows = gw.getWindowsWithTitle(title)
+        
+        if chrome_gpu_windows:
+            # 激活找到的第一个窗口
+            window = chrome_gpu_windows[0]
+            if not window.isActive:
+                window.activate()
+            print(f"已激活窗口: {window.title}")
+            time.sleep(0.5)  # 给窗口激活一点时间
+            return True
+        else:
+            print("未找到Google Chrome Gpu窗口")
+            return False
+            
+    except ImportError:
+        print("请安装pygetwindow: pip install pygetwindow")
+        return False
 
 def launch_renderdoc_and_inject():
     """
@@ -181,6 +207,7 @@ def launch_renderdoc_and_inject():
             time.sleep(1)
             
             # 先点击进程列表以确保焦点在列表上
+            print("尝试搜索Google Chrome Gpu进程...")
             pyautogui.moveTo(new_left + 80, new_top + 550, duration=0.1)  # 调整坐标
             pyautogui.click()
             time.sleep(0.5)
@@ -199,6 +226,14 @@ def launch_renderdoc_and_inject():
             # 按回车确认搜索
             keyboard.send_keys('{ENTER}')
             time.sleep(1)
+
+            # 等待注入完成
+            activate_window("Google Chrome Gpu")
+            time.sleep(1)
+
+            # 按回车确认进入
+            keyboard.send_keys('{ENTER}')
+            time.sleep(1)
             
             print("已完成注入操作")
             return True
@@ -214,20 +249,35 @@ def launch_renderdoc_and_inject():
         print(f"启动RenderDoc时发生错误: {str(e)}")
         return False
 
+def capture_frame():
+    """
+    截取当前屏幕并保存为PNG文件
+    """
+    try:
+        # 切换到Chrome窗口
+        activate_window("Google Chrome")
+        time.sleep(1)
+    except Exception as e:
+        print(f"截取帧时发生错误: {str(e)}")
+        return False
+
+
 if __name__ == "__main__":
     # 设置建筑地址
     address = "10912 Yukon Ave S"
     
     try:
-        # # 获取经纬度
-        # lat, lng = get_coordinates_from_google(address, API_KEY)
-        # print(f"地址: {address}")
-        # print(f"经纬度: ({lat}, {lng})")
+        # 获取经纬度
+        lat, lng = get_coordinates_from_google(address, API_KEY)
+        print(f"地址: {address}")
+        print(f"经纬度: ({lat}, {lng})")
         
-        # # 执行启动并获取进程ID
-        # chrome_pids = get_chrome_pid(lat, lng)
+        # 执行启动并获取进程ID
+        chrome_pids = get_chrome_pid(lat, lng)
         # 启动RenderDoc
         launch_renderdoc_and_inject()
+        # 截取帧
+        capture_frame()
         
     except Exception as e:
         print(f"错误: {str(e)}")

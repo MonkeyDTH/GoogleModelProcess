@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-29 10:37:04
+LastEditTime: 2025-04-29 15:21:25
 FilePath: /GoogleModelProcess/open_google_map.py
 Description: 
 '''
@@ -251,16 +251,417 @@ def launch_renderdoc_and_inject():
 
 def capture_frame():
     """
-    截取当前屏幕并保存为PNG文件
+    截取当前屏幕到RenderDoc中
     """
     try:
         # 切换到Chrome窗口
         activate_window("Google Chrome")
         time.sleep(1)
+        
+        # 导入pyautogui
+        import pyautogui
+        
+        # 获取屏幕尺寸
+        screen_width, screen_height = pyautogui.size()
+        center_x, center_y = screen_width // 2, screen_height // 2
+        
+        # 移动到屏幕中心
+        pyautogui.moveTo(center_x, center_y, duration=0.5)
+        
+        # 按下鼠标左键
+        pyautogui.mouseDown()
+        time.sleep(0.5)
+        
+        for _ in range(3):
+            duration = 0.2
+            # 向左移动
+            pyautogui.moveTo(center_x - 200, center_y, duration=duration)
+            pyautogui.moveTo(center_x, center_y, duration=duration)
+            
+            # 向右移动
+            pyautogui.moveTo(center_x + 200, center_y, duration=duration)
+            pyautogui.moveTo(center_x, center_y, duration=duration)
+            
+            # 向上移动
+            pyautogui.moveTo(center_x, center_y - 200, duration=duration)
+            pyautogui.moveTo(center_x, center_y, duration=duration)
+            
+            # 向下移动
+            pyautogui.moveTo(center_x, center_y + 200, duration=duration)
+            pyautogui.moveTo(center_x, center_y, duration=duration)
+        time.sleep(0.5)
+
+        # 按F12截图
+        pyautogui.press('f12')
+        time.sleep(1)
+
+        # 释放鼠标左键
+        pyautogui.mouseUp()
+        time.sleep(0.5)
+        print("已完成鼠标移动和截图操作")
+
+        # 切换到RenderDoc窗口
+        activate_window("RenderDoc")
+        time.sleep(1)
+
+        # 保存截取结果
+        print("正在保存截取结果...")
+        pyautogui.moveTo(1275, 1100, duration=0.3)
+        pyautogui.click()
+        pyautogui.rightClick()
+        time.sleep(0.3)
+        pyautogui.moveTo(1300, 1155, duration=0.3)
+        pyautogui.click()
+        time.sleep(3)
+        pyautogui.write("temp")
+        pyautogui.press('enter')
+        time.sleep(0.3)
+        pyautogui.press('enter')
+        
+        return True
+        
     except Exception as e:
         print(f"截取帧时发生错误: {str(e)}")
         return False
 
+def open_blender():
+    """
+    打开Blender
+    """
+    try:
+        # Blender路径
+        blender_path = r'C:\Program Files\Blender Foundation\Blender 4.4\blender-launcher.exe'
+        if os.path.exists(blender_path):
+            try:
+                # 构建启动命令
+                cmd = [
+                    blender_path
+                ]
+
+                # 启动Blender
+                process = subprocess.Popen(cmd)
+                print(f"已打开Blender")
+
+                return True
+
+            except Exception as e:
+                print(f"启动Blender时发生错误: {str(e)}")
+                return False
+
+        else:
+            print(f"未找到Blender: {blender_path}")
+            return False
+    
+    except Exception as e:
+        print(f"打开Blender时发生错误: {str(e)}")
+        return False
+
+def match_template():
+    """
+    使用特征点匹配方法查找图像中的目标
+    """
+    try:
+        # 切换到Blender窗口
+        activate_window("Blender")
+        time.sleep(1)
+        
+        # 导入必要的库
+        import cv2
+        import numpy as np
+        import pyautogui
+        import os
+        from datetime import datetime
+        
+        # 模板图片路径
+        template_path = r"C:\Users\leili\Downloads\PixPin_2025-04-29_11-11-22.png"
+        
+        if not os.path.exists(template_path):
+            print(f"未找到模板图片: {template_path}")
+            return False
+            
+        # 截取当前屏幕
+        print("正在截取当前屏幕...")
+        screenshot = pyautogui.screenshot()
+        
+        # 创建保存截图的目录
+        save_dir = os.path.join(os.getcwd(), "screenshots")
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+            
+        # 生成时间戳文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = os.path.join(save_dir, f"screenshot_{timestamp}.png")
+        
+        # 保存截图
+        screenshot.save(screenshot_path)
+        print(f"截图已保存至: {screenshot_path}")
+        
+        # 读取模板图片和截图
+        template = cv2.imread(template_path)
+        screenshot_cv = cv2.imread(screenshot_path)
+        
+        # 检查图片是否正确加载
+        if template is None or screenshot_cv is None:
+            print("无法加载图片，请检查图片路径")
+            return False
+            
+        # 转换为灰度图
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        screenshot_gray = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
+        
+        # 使用SIFT特征检测器
+        print("正在提取特征点...")
+        sift = cv2.SIFT_create()
+        
+        # 在模板和截图中检测关键点和描述符
+        kp1, des1 = sift.detectAndCompute(template_gray, None)
+        kp2, des2 = sift.detectAndCompute(screenshot_gray, None)
+        
+        # 使用FLANN匹配器进行特征匹配
+        print("正在进行特征匹配...")
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        
+        # 获取匹配结果
+        matches = flann.knnMatch(des1, des2, k=2)
+        
+        # 应用Lowe's比率测试筛选好的匹配
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.7 * n.distance:
+                good_matches.append(m)
+        
+        print(f"找到 {len(good_matches)} 个良好匹配点")
+        
+        # 如果找到足够的好匹配点
+        min_match_count = 10
+        if len(good_matches) >= min_match_count:
+            # 提取匹配点的坐标
+            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            
+            # 计算单应性矩阵
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            matchesMask = mask.ravel().tolist()
+            
+            # 获取模板图像的尺寸
+            h, w = template_gray.shape
+            
+            # 定义模板图像的四个角点
+            pts = np.float32([[0, 0], [0, h-1], [w-1, h-1], [w-1, 0]]).reshape(-1, 1, 2)
+            
+            # 使用单应性矩阵转换角点坐标
+            dst = cv2.perspectiveTransform(pts, M)
+            
+            # 计算目标中心点
+            center_x = int(np.mean(dst[:, 0, 0]))
+            center_y = int(np.mean(dst[:, 0, 1]))
+            
+            # 在结果图上绘制边界框
+            result_image = screenshot_cv.copy()
+            cv2.polylines(result_image, [np.int32(dst)], True, (0, 255, 0), 3)
+            
+            # 在结果图上标记中心点
+            cv2.circle(result_image, (center_x, center_y), 10, (0, 0, 255), -1)
+            
+            print(f"找到目标: 中心坐标 = ({center_x}, {center_y})")
+            
+            # 绘制匹配结果
+            draw_params = dict(
+                matchColor=(0, 255, 0),
+                singlePointColor=None,
+                matchesMask=matchesMask,
+                flags=2
+            )
+            
+            match_img = cv2.drawMatches(template, kp1, screenshot_cv, kp2, good_matches, None, **draw_params)
+            
+            # 保存结果图
+            result_path = os.path.join(save_dir, f"match_result_{timestamp}.png")
+            cv2.imwrite(result_path, result_image)
+            
+            # 保存匹配点图
+            matches_path = os.path.join(save_dir, f"matches_{timestamp}.png")
+            cv2.imwrite(matches_path, match_img)
+            
+            print(f"匹配结果已保存至: {result_path}")
+            print(f"匹配点图已保存至: {matches_path}")
+            
+            # 将匹配结果保存到文本文件
+            result_txt_path = os.path.join(save_dir, f"match_coordinates_{timestamp}.txt")
+            with open(result_txt_path, 'w') as f:
+                f.write(f"模板图片: {template_path}\n")
+                f.write(f"截图时间: {timestamp}\n")
+                f.write(f"匹配方法: SIFT特征点匹配\n")
+                f.write(f"良好匹配点数量: {len(good_matches)}\n\n")
+                f.write(f"目标中心坐标: ({center_x}, {center_y})\n")
+                f.write(f"目标边界框坐标:\n")
+                for i, point in enumerate(np.int32(dst)):
+                    f.write(f"  点{i+1}: ({point[0][0]}, {point[0][1]})\n")
+            
+            print(f"匹配坐标已保存至: {result_txt_path}")
+            
+            # 获取目标边界框的四个角点坐标
+            points = np.int32(dst)
+            min_x = min(point[0][0] for point in points)
+            min_y = min(point[0][1] for point in points)
+            max_x = max(point[0][0] for point in points)
+            max_y = max(point[0][1] for point in points)
+            
+            # 添加一些边距
+            padding = 10
+            min_x = max(0, min_x - padding)
+            min_y = max(0, min_y - padding)
+            max_x = min(screenshot_cv.shape[1], max_x + padding)
+            max_y = min(screenshot_cv.shape[0], max_y + padding)
+
+            # 切换到Blender窗口
+            print("切换回Blender窗口...")
+            activate_window("Blender")
+            time.sleep(1)
+
+            # 尝试点击3D视图区域中心以确保焦点
+            screen_width, screen_height = pyautogui.size()
+            pyautogui.click(screen_width // 2, screen_height // 2)
+            time.sleep(0.5)
+            
+            # 按Tab键切换到编辑模式
+            print("按Tab键切换到编辑模式...")
+            pyautogui.press('tab')
+            time.sleep(1)
+            
+            # 移动到左上角位置开始框选
+            print(f"移动鼠标到左上角位置: ({min_x}, {min_y})")
+            pyautogui.moveTo(min_x, min_y, duration=0.5)
+            
+            # 按下鼠标左键开始框选
+            pyautogui.mouseDown()
+            time.sleep(0.2)
+            
+            # 移动鼠标到右下角完成框选
+            print(f"移动鼠标到右下角位置: ({max_x}, {max_y})")
+            pyautogui.moveTo(max_x, max_y, duration=0.5)
+            time.sleep(0.2)
+            
+            # 释放鼠标左键完成框选
+            pyautogui.mouseUp()
+            time.sleep(0.5)
+            print("已完成目标区域框选")
+            
+            # 按下Shift+ctrl+D删除其余目标
+            from pywinauto import keyboard
+            keyboard.send_keys('^+d')
+            time.sleep(0.5)
+            print("已完成目标区域框选")
+
+            return (center_x, center_y)
+            
+        else:
+            print(f"未找到足够的匹配点 (找到 {len(good_matches)}/{min_match_count})")
+            
+            # 尝试使用ORB特征检测器作为备选方案
+            print("尝试使用ORB特征检测器...")
+            orb = cv2.ORB_create()
+            
+            # 在模板和截图中检测关键点和描述符
+            kp1_orb, des1_orb = orb.detectAndCompute(template_gray, None)
+            kp2_orb, des2_orb = orb.detectAndCompute(screenshot_gray, None)
+            
+            # 使用暴力匹配器
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            
+            # 获取匹配结果
+            matches_orb = bf.match(des1_orb, des2_orb)
+            
+            # 按距离排序
+            matches_orb = sorted(matches_orb, key=lambda x: x.distance)
+            
+            # 取前30个匹配
+            good_matches_orb = matches_orb[:30]
+            
+            print(f"ORB找到 {len(good_matches_orb)} 个匹配点")
+            
+            if len(good_matches_orb) >= min_match_count:
+                # 绘制ORB匹配结果
+                orb_match_img = cv2.drawMatches(template, kp1_orb, screenshot_cv, kp2_orb, good_matches_orb, None, flags=2)
+                
+                # 保存ORB匹配结果
+                orb_matches_path = os.path.join(save_dir, f"orb_matches_{timestamp}.png")
+                cv2.imwrite(orb_matches_path, orb_match_img)
+                
+                print(f"ORB匹配结果已保存至: {orb_matches_path}")
+                
+                # 计算匹配点的平均位置作为目标中心
+                src_pts_orb = np.float32([kp1_orb[m.queryIdx].pt for m in good_matches_orb])
+                dst_pts_orb = np.float32([kp2_orb[m.trainIdx].pt for m in good_matches_orb])
+                
+                # 计算目标中心
+                center_x_orb = int(np.mean([pt[0] for pt in dst_pts_orb]))
+                center_y_orb = int(np.mean([pt[1] for pt in dst_pts_orb]))
+                
+                print(f"ORB找到目标: 中心坐标 = ({center_x_orb}, {center_y_orb})")
+                
+                # 将ORB匹配结果保存到文本文件
+                result_txt_path = os.path.join(save_dir, f"orb_match_coordinates_{timestamp}.txt")
+                with open(result_txt_path, 'w') as f:
+                    f.write(f"模板图片: {template_path}\n")
+                    f.write(f"截图时间: {timestamp}\n")
+                    f.write(f"匹配方法: ORB特征点匹配\n")
+                    f.write(f"匹配点数量: {len(good_matches_orb)}\n\n")
+                    f.write(f"目标中心坐标: ({center_x_orb}, {center_y_orb})\n")
+                
+                # 按Tab键切换到编辑模式
+                print("按Tab键切换到编辑模式...")
+                pyautogui.press('tab')
+                time.sleep(1)
+                
+                # 计算匹配点的边界框
+                min_x_orb = int(min([pt[0] for pt in dst_pts_orb]))
+                min_y_orb = int(min([pt[1] for pt in dst_pts_orb]))
+                max_x_orb = int(max([pt[0] for pt in dst_pts_orb]))
+                max_y_orb = int(max([pt[1] for pt in dst_pts_orb]))
+                
+                # 添加一些边距
+                padding = 10
+                min_x_orb = max(0, min_x_orb - padding)
+                min_y_orb = max(0, min_y_orb - padding)
+                max_x_orb = min(screenshot_cv.shape[1], max_x_orb + padding)
+                max_y_orb = min(screenshot_cv.shape[0], max_y_orb + padding)
+                
+                # 移动到左上角位置开始框选
+                print(f"移动鼠标到左上角位置: ({min_x_orb}, {min_y_orb})")
+                pyautogui.moveTo(min_x_orb, min_y_orb, duration=0.5)
+                
+                # 按下鼠标左键开始框选
+                pyautogui.mouseDown()
+                time.sleep(0.2)
+                
+                # 移动鼠标到右下角完成框选
+                print(f"移动鼠标到右下角位置: ({max_x_orb}, {max_y_orb})")
+                pyautogui.moveTo(max_x_orb, max_y_orb, duration=0.5)
+                time.sleep(0.2)
+                
+                # 释放鼠标左键完成框选
+                pyautogui.mouseUp()
+                time.sleep(0.5)
+                
+                print("已完成目标区域框选")
+                
+                return (center_x_orb, center_y_orb)
+            
+            else:
+                print("SIFT和ORB特征匹配均未找到足够的匹配点，请检查模板图片或尝试其他方法")
+                return False
+
+    except ImportError as e:
+        print(f"缺少必要的库: {str(e)}")
+        print("请安装必要的库: pip install opencv-python numpy pyautogui")
+        return False
+    except Exception as e:
+        print(f"特征点匹配时发生错误: {str(e)}")
+        return False
 
 if __name__ == "__main__":
     # 设置建筑地址
@@ -278,6 +679,13 @@ if __name__ == "__main__":
         launch_renderdoc_and_inject()
         # 截取帧
         capture_frame()
+
+        # 打开Blender
+        open_blender()
+
+        # # # 匹配模板
+        # match_template()
+        
         
     except Exception as e:
         print(f"错误: {str(e)}")

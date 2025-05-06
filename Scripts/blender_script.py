@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-06 15:21:38
+LastEditTime: 2025-05-06 15:50:32
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
@@ -136,6 +136,7 @@ def set_viewport_orthographic():
                     # 设置为顶视图（垂直向下看）
                     space.region_3d.view_perspective = 'ORTHO'  # 设置为正交视图
                     space.region_3d.view_rotation = Quaternion((1, 0, 0, 0))  # 顶视图旋转
+
 def count_meshes():
     """
     统计场景中的网格物体数量
@@ -261,6 +262,98 @@ def center_mesh_origin(mesh_object=None):
 
     print(f"网格 '{mesh_object.name}' 已完成居中")
 
+def export_mesh():
+    """
+    导出当前选中的Mesh为FBX文件
+    """
+    try:
+        # 获取当前时间戳
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # 创建导出目录
+        export_dir = os.path.join(project_dir, "exports")
+        if not os.path.exists(export_dir):
+            os.makedirs(export_dir)
+        
+        # 设置导出文件路径
+        export_path = os.path.join(export_dir, f"mesh_export_{timestamp}.fbx")
+        
+        # 确保选中了要导出的对象
+        if not bpy.context.selected_objects:
+            print("错误：没有选中任何对象")
+            return False
+            
+        # 设置导出选项
+        bpy.ops.export_scene.fbx(
+            filepath=export_path,
+            use_selection=True,
+            global_scale=1.0,
+            apply_unit_scale=True,
+            apply_scale_options='FBX_SCALE_NONE',
+            bake_space_transform=False,
+            object_types={'MESH'},
+            use_mesh_modifiers=True,
+            mesh_smooth_type='OFF',
+            use_mesh_edges=False,
+            use_tspace=False,
+            use_custom_props=False,
+            add_leaf_bones=False,
+            primary_bone_axis='Y',
+            secondary_bone_axis='X',
+            use_armature_deform_only=False,
+            bake_anim=False,
+            path_mode='AUTO'
+        )
+        
+        print(f"已将Mesh导出至: {export_path}")
+        return True
+        
+    except Exception as e:
+        print(f"导出Mesh时发生错误: {str(e)}")
+        return False
+
+def check_export_signal():
+    """
+    检查是否存在导出信号文件
+    """
+    signal_file = os.path.join(project_dir, "export_mesh.signal")
+    if os.path.exists(signal_file):
+        try:
+            # 先移除信号文件，防止重复导出
+            os.remove(signal_file)
+            
+            logI("检测到导出信号，开始导出Mesh...")
+            if export_mesh():
+                # 导出成功后保存Blender项目
+                logI("开始保存Blender项目...")
+                save_blender_project()
+                
+                # 创建导出完成信号
+                done_file = os.path.join(project_dir, "export_done.signal")
+                with open(done_file, 'w') as f:
+                    f.write(str(datetime.now()))
+                logI("导出和保存完成")
+            else:
+                logE("导出失败")
+                # 如果导出失败，重新创建信号文件以便重试
+                with open(signal_file, 'w') as f:
+                    f.write(str(datetime.now()))
+        except Exception as e:
+            logEX(f"处理导出信号时发生错误: {str(e)}")
+            # 发生错误时也重新创建信号文件
+            try:
+                with open(signal_file, 'w') as f:
+                    f.write(str(datetime.now()))
+            except:
+                pass
+    return 1.0  # 返回1秒后再次执行
+
+def register_timer():
+    """
+    注册定时器来检查导出信号
+    """
+    bpy.app.timers.register(check_export_signal)
+    logI("已注册导出信号检查定时器")
 
 def main():
     """
@@ -302,6 +395,9 @@ def main():
         with open(signal_file, 'w') as f:
             f.write(str(datetime.now()))
             
+        # 注册定时器来检查导出信号，而不是使用阻塞的循环
+        register_timer()
+        
         return True
         
     except Exception as e:

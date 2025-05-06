@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-06 15:27:05
+LastEditTime: 2025-05-06 15:53:28
 FilePath: /GoogleModelProcess/Scripts/open_google_map.py
 Description: 
 '''
@@ -627,6 +627,35 @@ def match_template():
             time.sleep(0.5)
             logI("已删除周围杂物")
 
+            # 创建导出信号文件
+            export_signal_file = os.path.join(project_dir, "export_mesh.signal")
+            with open(export_signal_file, 'w') as f:
+                f.write(str(datetime.now()))
+            
+            print("已创建导出信号文件，等待Blender响应...")
+            
+            # 等待导出完成信号
+            export_done_file = os.path.join(project_dir, "export_done.signal")
+            
+            # 等待导出完成
+            max_wait_time = 60  # 最长等待1分钟
+            start_time = time.time()
+            
+            while not os.path.exists(export_done_file):
+                if time.time() - start_time > max_wait_time:
+                    logW("等待导出完成超时")
+                    return False
+                    
+                logI("等待Blender导出完成...")
+                time.sleep(2)
+            
+            # 删除信号文件
+            if os.path.exists(export_signal_file):
+                os.remove(export_signal_file)
+            if os.path.exists(export_done_file):
+                os.remove(export_done_file)
+            logI("Mesh导出完成")
+
             return (center_x, center_y)
             
         else:
@@ -723,15 +752,15 @@ def match_template():
                 return (center_x_orb, center_y_orb)
             
             else:
-                print("SIFT和ORB特征匹配均未找到足够的匹配点，请检查模板图片或尝试其他方法")
+                logE("SIFT和ORB特征匹配均未找到足够的匹配点，请检查模板图片或尝试其他方法")
                 return False
 
     except ImportError as e:
-        print(f"缺少必要的库: {str(e)}")
-        print("请安装必要的库: pip install opencv-python numpy pyautogui")
+        logEX(f"缺少必要的库: {str(e)}")
+        logI("请安装必要的库: pip install opencv-python numpy pyautogui")
         return False
     except Exception as e:
-        print(f"特征点匹配时发生错误: {str(e)}")
+        logEX(f"特征点匹配时发生错误: {str(e)}")
         return False
 
 if __name__ == "__main__":
@@ -742,7 +771,7 @@ if __name__ == "__main__":
     address = get_setting('address')
     
     try:
-        b_capture = False
+        b_capture = True
         if b_capture:
             # 获取经纬度
             lat, lng = get_coordinates_from_google(address, API_KEY)
@@ -763,4 +792,5 @@ if __name__ == "__main__":
         
         
     except Exception as e:
-        print(f"错误: {str(e)}")
+        logEX(f"错误: {str(e)}")
+        

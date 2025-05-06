@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-06 13:20:39
+LastEditTime: 2025-05-06 14:03:55
 FilePath: /GoogleModelProcess/Scripts/open_google_map.py
 Description: 
 '''
@@ -19,8 +19,12 @@ project_dir = os.path.dirname(current_dir)
 if project_dir not in sys.path:
     sys.path.append(project_dir)
 
-# 现在可以导入config_utils模块
-from Scripts.config_utils import get_api_key, get_path, get_setting
+# 导入配置工具和日志工具
+from Scripts.config_utils import get_api_key, get_path, get_setting, get_log_level, get_log_dir
+from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
+
+# 初始化日志系统
+logger = setup_logger(log_level=get_log_level(), log_dir=get_log_dir())
 
 # 从配置文件获取 Google Maps API 密钥
 API_KEY = get_api_key()
@@ -35,7 +39,9 @@ def get_coordinates_from_google(address, api_key=None):
     # 如果未提供API密钥，则使用配置文件中的密钥
     if api_key is None:
         api_key = API_KEY
-        
+    
+    logI(f"开始获取地址的经纬度: {address}")
+    
     # 创建Google Maps客户端
     gmaps = googlemaps.Client(key=api_key)
     
@@ -44,10 +50,14 @@ def get_coordinates_from_google(address, api_key=None):
         geocode_result = gmaps.geocode(address)
         if geocode_result:
             location = geocode_result[0]['geometry']['location']
-            return location['lat'], location['lng']
+            lat, lng = location['lat'], location['lng']
+            logI(f"成功获取经纬度: ({lat}, {lng})")
+            return lat, lng
         else:
+            logE(f"无法找到该地址: {address}")
             raise ValueError("无法找到该地址")
     except Exception as e:
+        logEX(f"Google Maps API错误: {str(e)}")
         raise Exception(f"Google Maps API错误: {str(e)}")
 
 def launch_chrome_google_map(lat=None, lng=None, zoom=None):
@@ -60,9 +70,12 @@ def launch_chrome_google_map(lat=None, lng=None, zoom=None):
     # 如果未提供缩放级别，则从配置文件获取
     if zoom is None:
         zoom = int(get_setting('map_zoom', 21))
-        
+    
+    logI(f"准备打开Google地图，经纬度: ({lat}, {lng})，缩放级别: {zoom}")
+    
     # 构建卫星视图的URL
     url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
+    logD(f"Google地图URL: {url}")
     
     # 从配置文件获取Chrome路径
     chrome_path = get_path('chrome_path')
@@ -89,25 +102,27 @@ def launch_chrome_google_map(lat=None, lng=None, zoom=None):
                 url
             ]
             
+            logD(f"Chrome启动命令: {' '.join(cmd)}")
+            
             # 直接启动Chrome，不通过cmd.exe
             process = subprocess.Popen(cmd, env=env)
-            print(f"已打开卫星地图视图，请在浏览器中查看...")
+            logI(f"已打开卫星地图视图，Chrome进程ID: {process.pid}")
             
             # 等待新的Chrome进程启动
             time.sleep(2)
             
             if process.pid:
-                print("新启动的Chrome主进程ID:", process.pid)
+                logI(f"新启动的Chrome主进程ID: {process.pid}")
                 return {process.pid}
             else:
-                print("未能检测到新的Chrome主进程")
+                logW("未能检测到新的Chrome主进程")
                 return set()
                 
         except Exception as e:
-            print(f"启动Chrome时发生错误: {str(e)}")
+            logEX(f"启动Chrome时发生错误: {str(e)}")
             return set()
     else:
-        print(f"未找到Chrome浏览器: {chrome_path}")
+        logE(f"未找到Chrome浏览器: {chrome_path}")
         return set()
 
 def activate_window(title):
@@ -703,12 +718,11 @@ if __name__ == "__main__":
     address = get_setting('address')
     
     try:
-        b_capture = False
+        b_capture = True
         if b_capture:
             # 获取经纬度
             lat, lng = get_coordinates_from_google(address, API_KEY)
-            print(f"地址: {address}")
-            print(f"经纬度: ({lat}, {lng})")
+            logI(f"地址: {address}, 经纬度: ({lat}, {lng})")
             
             # 执行启动并获取进程ID
             chrome_pids = launch_chrome_google_map(lat, lng)

@@ -58,3 +58,13 @@ def get_setting(setting_name, fallback=None):
     """
     config = load_config()
     return config.get('Settings', setting_name, fallback=fallback)
+
+def get_log_level():
+    """获取日志级别配置"""
+    config = load_config()
+    return config.get('Logging', 'log_level', fallback='info')
+
+def get_log_dir():
+    """获取日志目录配置"""
+    config = load_config()
+    return config.get('Logging', 'log_dir', fallback=None)

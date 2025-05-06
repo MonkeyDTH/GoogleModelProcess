@@ -6,3 +6,4 @@ osm/
 addresses.json
 screenshots/
 Scripts/__pycache__/
+logs/

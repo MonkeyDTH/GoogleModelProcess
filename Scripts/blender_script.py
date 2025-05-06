@@ -2,14 +2,15 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-06
-FilePath: /GoogleModelProcess/blender_script.py
+LastEditTime: 2025-05-06 13:22:45
+FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
 import bpy
 import os
 import sys
 import time
+from datetime import datetime
 
 # 添加项目根目录到Python路径，以便导入配置模块
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -53,45 +54,72 @@ def main():
         except Exception as e:
             print(f"导入RenderDoc文件时发生错误: {str(e)}")
             return False
-            
-        # 设置视图
-        for area in bpy.context.screen.areas:
-            if area.type == 'VIEW_3D':
-                for region in area.regions:
-                    if region.type == 'WINDOW':
-                        override = {'area': area, 'region': region}
-                        bpy.ops.view3d.view_all(override)
-                        print("已调整3D视图")
-                        break
         
         # 使用安全的方式设置视图着色模式
         try:
-            # 方法1：使用操作符设置着色模式
+            # 方法1：直接设置属性
             for area in bpy.context.screen.areas:
                 if area.type == 'VIEW_3D':
-                    override = {'area': area}
-                    bpy.ops.view3d.shading(override, type='MATERIAL')
-                    print("已使用操作符切换到Material Preview着色模式")
-                    break
+                    for space in area.spaces:
+                        if space.type == 'VIEW_3D':
+                            try:
+                                space.shading.type = 'MATERIAL'
+                                print("已直接设置Material Preview着色模式")
+                                break
+                            except Exception as e:
+                                print(f"直接设置着色模式失败: {str(e)}")
         except Exception as e:
-            print(f"使用操作符设置着色模式失败: {str(e)}")
+            print(f"设置着色模式时发生错误: {str(e)}")
+            print("无法设置着色模式，请在Blender界面中手动设置")
+        
+        # 保存Blender项目
+        try:
+            # 设置保存目录
+            save_dir = get_path("blender_project_dir")
+            
+            # 检查目录是否存在，如果不存在则创建
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+                print(f"已创建保存目录: {save_dir}")
+            
+            # 设置自动打包外部资源
+            print("设置自动打包外部资源...")
+            # 启用自动打包
+            bpy.data.use_autopack = True
+            
+            # 手动打包所有外部资源
             try:
-                # 方法2：使用延迟执行的方式
-                def set_shading_mode():
-                    for area in bpy.context.screen.areas:
-                        if area.type == 'VIEW_3D':
-                            for space in area.spaces:
-                                if space.type == 'VIEW_3D':
-                                    space.shading.type = 'MATERIAL'
-                                    return True
-                    return False
+                # 打包所有外部资源
+                bpy.ops.file.pack_all()
+                print("已成功打包所有外部资源")
+            except Exception as e:
+                print(f"打包外部资源时发生错误: {str(e)}")
                 
-                # 注册一个定时器，在UI初始化后执行
-                bpy.app.timers.register(set_shading_mode, first_interval=1.0)
-                print("已注册定时器来设置Material Preview着色模式")
-            except Exception as e2:
-                print(f"使用定时器设置着色模式也失败: {str(e2)}")
-                print("无法设置着色模式，请在Blender界面中手动设置")
+            # 确保打包设置在保存时生效
+            try:
+                # 设置打包选项
+                bpy.context.preferences.filepaths.use_file_compression = True
+                print("已启用文件压缩")
+            except Exception as e:
+                print(f"设置文件压缩选项时发生错误: {str(e)}")
+            
+            # 生成当前时间作为文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            blend_file_path = os.path.join(save_dir, f"blender_project_{timestamp}.blend")
+            
+            # 保存Blender项目
+            bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, compress=True, relative_remap=True)
+            print(f"已将Blender项目保存至: {blend_file_path}")
+            
+            # # 延迟一小段时间确保文件保存完成
+            # time.sleep(2)
+            
+            # # 保存完成后自动退出Blender
+            # print("保存完成，准备退出Blender...")
+            # bpy.ops.wm.quit_blender()
+            
+        except Exception as e:
+            print(f"保存Blender项目时发生错误: {str(e)}")
         
         print("Blender内部脚本执行完成")
         return True

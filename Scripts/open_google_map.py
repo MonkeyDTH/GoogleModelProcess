@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-06 11:34:18
+LastEditTime: 2025-05-06 13:20:39
 FilePath: /GoogleModelProcess/Scripts/open_google_map.py
 Description: 
 '''
@@ -50,7 +50,7 @@ def get_coordinates_from_google(address, api_key=None):
     except Exception as e:
         raise Exception(f"Google Maps API错误: {str(e)}")
 
-def get_chrome_pid(lat=None, lng=None, zoom=None):
+def launch_chrome_google_map(lat=None, lng=None, zoom=None):
     """
     打开指定经纬度的Google地图
     :param lat: 纬度
@@ -231,7 +231,7 @@ def launch_renderdoc_and_inject():
             time.sleep(0.5)
             
             # 输入搜索内容
-            pyautogui.write('Google  Chrome  Gpu', interval=0.03)  # 使用write方法, 用中文输入法需要打两个空格
+            pyautogui.write('Google  Chrome  Gpu', interval=0.05)  # 使用write方法, 用中文输入法需要打两个空格
             time.sleep(1)
 
             # 在进程选择对话框中点击
@@ -703,17 +703,19 @@ if __name__ == "__main__":
     address = get_setting('address')
     
     try:
-        # 获取经纬度
-        lat, lng = get_coordinates_from_google(address, API_KEY)
-        print(f"地址: {address}")
-        print(f"经纬度: ({lat}, {lng})")
-        
-        # 执行启动并获取进程ID
-        chrome_pids = get_chrome_pid(lat, lng)
-        # 启动RenderDoc
-        launch_renderdoc_and_inject()
-        # 截取帧
-        capture_frame()
+        b_capture = False
+        if b_capture:
+            # 获取经纬度
+            lat, lng = get_coordinates_from_google(address, API_KEY)
+            print(f"地址: {address}")
+            print(f"经纬度: ({lat}, {lng})")
+            
+            # 执行启动并获取进程ID
+            chrome_pids = launch_chrome_google_map(lat, lng)
+            # 启动RenderDoc
+            launch_renderdoc_and_inject()
+            # 截取帧
+            capture_frame()
 
         # 打开Blender
         open_blender()

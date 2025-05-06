@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-06 14:03:55
+LastEditTime: 2025-05-06 15:27:05
 FilePath: /GoogleModelProcess/Scripts/open_google_map.py
 Description: 
 '''
@@ -379,7 +379,7 @@ def open_blender():
             return False
             
         try:
-            # 构建启动命令，使用--python参数执行脚本
+            # 构建启动命令，添加--python参数执行脚本
             cmd = [
                 blender_path,
                 '--python', blender_script_path
@@ -390,13 +390,33 @@ def open_blender():
             process = subprocess.Popen(cmd)
             print(f"已启动Blender进程，PID: {process.pid}")
             
-            # 等待Blender启动完成
-            time.sleep(5)
+            # 等待Blender启动和脚本执行完成
+            signal_file = os.path.join(project_dir, "blender_script_done.signal")
+            
+            # 如果存在旧的信号文件，先删除
+            if os.path.exists(signal_file):
+                os.remove(signal_file)
+            
+            # 等待信号文件出现
+            max_wait_time = 300  # 最长等待5分钟
+            start_time = time.time()
+            
+            while not os.path.exists(signal_file):
+                if time.time() - start_time > max_wait_time:
+                    print("等待Blender脚本执行超时")
+                    return False
+                    
+                print("等待Blender脚本执行完成...")
+                time.sleep(5)
+            
+            # 删除信号文件
+            os.remove(signal_file)
+            logI("Blender脚本执行完成，继续执行后续步骤")
             
             return True
 
         except Exception as e:
-            print(f"启动Blender时发生错误: {str(e)}")
+            logEX(f"启动Blender时发生错误: {str(e)}")
             return False
 
     except Exception as e:
@@ -575,12 +595,16 @@ def match_template():
             time.sleep(0.5)
             
             # 按Tab键切换到编辑模式
-            print("按Tab键切换到编辑模式...")
+            logD("按Tab键切换到编辑模式...")
             pyautogui.press('tab')
             time.sleep(1)
             
+            # 按下组合键alt+Z切换透视框选模式
+            pyautogui.hotkey('alt', 'z')
+            time.sleep(0.5)
+            
             # 移动到左上角位置开始框选
-            print(f"移动鼠标到左上角位置: ({min_x}, {min_y})")
+            logD(f"移动鼠标到左上角位置: ({min_x}, {min_y})")
             pyautogui.moveTo(min_x, min_y, duration=0.5)
             
             # 按下鼠标左键开始框选
@@ -588,28 +612,28 @@ def match_template():
             time.sleep(0.2)
             
             # 移动鼠标到右下角完成框选
-            print(f"移动鼠标到右下角位置: ({max_x}, {max_y})")
+            logD(f"移动鼠标到右下角位置: ({max_x}, {max_y})")
             pyautogui.moveTo(max_x, max_y, duration=0.5)
             time.sleep(0.2)
             
             # 释放鼠标左键完成框选
             pyautogui.mouseUp()
             time.sleep(0.5)
-            print("已完成目标区域框选")
+            logD("已完成目标区域框选")
             
             # 按下Shift+ctrl+D删除其余目标
             from pywinauto import keyboard
             keyboard.send_keys('^+d')
             time.sleep(0.5)
-            print("已完成目标区域框选")
+            logI("已删除周围杂物")
 
             return (center_x, center_y)
             
         else:
-            print(f"未找到足够的匹配点 (找到 {len(good_matches)}/{min_match_count})")
+            logW(f"未找到足够的匹配点 (找到 {len(good_matches)}/{min_match_count})")
             
             # 尝试使用ORB特征检测器作为备选方案
-            print("尝试使用ORB特征检测器...")
+            logI("尝试使用ORB特征检测器...")
             orb = cv2.ORB_create()
             
             # 在模板和截图中检测关键点和描述符
@@ -718,7 +742,7 @@ if __name__ == "__main__":
     address = get_setting('address')
     
     try:
-        b_capture = True
+        b_capture = False
         if b_capture:
             # 获取经纬度
             lat, lng = get_coordinates_from_google(address, API_KEY)
@@ -734,8 +758,8 @@ if __name__ == "__main__":
         # 打开Blender
         open_blender()
 
-        # # # 匹配模板
-        # match_template()
+        # 匹配模板
+        match_template()
         
         
     except Exception as e:

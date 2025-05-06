@@ -2,8 +2,8 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-04-29 15:21:25
-FilePath: /GoogleModelProcess/open_google_map.py
+LastEditTime: 2025-05-06 11:34:18
+FilePath: /GoogleModelProcess/Scripts/open_google_map.py
 Description: 
 '''
 import os
@@ -11,17 +11,31 @@ import subprocess
 import time
 import psutil
 import googlemaps
+import sys
 
-# Google Maps API密钥
-API_KEY = "AIzaSyDLgBT4f31Oo509m9jAdm9Nlx-OOufXg7E"  # 请替换为您的API密钥
+# 添加项目根目录到Python路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(current_dir)
+if project_dir not in sys.path:
+    sys.path.append(project_dir)
 
-def get_coordinates_from_google(address, api_key):
+# 现在可以导入config_utils模块
+from Scripts.config_utils import get_api_key, get_path, get_setting
+
+# 从配置文件获取 Google Maps API 密钥
+API_KEY = get_api_key()
+
+def get_coordinates_from_google(address, api_key=None):
     """
     使用Google Maps API获取地址的经纬度
     :param address: 地址字符串
-    :param api_key: Google Maps API密钥
+    :param api_key: Google Maps API密钥，如果为None则使用配置文件中的密钥
     :return: (纬度, 经度)元组
     """
+    # 如果未提供API密钥，则使用配置文件中的密钥
+    if api_key is None:
+        api_key = API_KEY
+        
     # 创建Google Maps客户端
     gmaps = googlemaps.Client(key=api_key)
     
@@ -36,18 +50,22 @@ def get_coordinates_from_google(address, api_key):
     except Exception as e:
         raise Exception(f"Google Maps API错误: {str(e)}")
 
-def get_chrome_pid(lat=None, lng=None, zoom=21):
+def get_chrome_pid(lat=None, lng=None, zoom=None):
     """
     打开指定经纬度的Google地图
     :param lat: 纬度
     :param lng: 经度
     :param zoom: 缩放级别
     """
+    # 如果未提供缩放级别，则从配置文件获取
+    if zoom is None:
+        zoom = int(get_setting('map_zoom', 21))
+        
     # 构建卫星视图的URL
     url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
     
-    # Chrome路径
-    chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+    # 从配置文件获取Chrome路径
+    chrome_path = get_path('chrome_path')
     
     # 获取启动前的Chrome进程列表
     chrome_processes_before = {
@@ -122,8 +140,8 @@ def launch_renderdoc_and_inject():
     """
     启动RenderDoc并点击File菜单，然后点击Inject into Process并选择指定进程
     """
-    # RenderDoc默认安装路径
-    renderdoc_path = r'C:\Program Files\RenderDoc\qrenderdoc.exe'
+    # 从配置文件获取RenderDoc路径
+    renderdoc_path = get_path('renderdoc_path')
     
     if not os.path.exists(renderdoc_path):
         print(f"未找到RenderDoc: {renderdoc_path}")
@@ -272,7 +290,7 @@ def capture_frame():
         pyautogui.mouseDown()
         time.sleep(0.5)
         
-        for _ in range(3):
+        for _ in range(2):
             duration = 0.2
             # 向左移动
             pyautogui.moveTo(center_x - 200, center_y, duration=duration)
@@ -289,7 +307,6 @@ def capture_frame():
             # 向下移动
             pyautogui.moveTo(center_x, center_y + 200, duration=duration)
             pyautogui.moveTo(center_x, center_y, duration=duration)
-        time.sleep(0.5)
 
         # 按F12截图
         pyautogui.press('f12')
@@ -326,34 +343,49 @@ def capture_frame():
 
 def open_blender():
     """
-    打开Blender
+    打开Blender并执行内部脚本
     """
     try:
-        # Blender路径
-        blender_path = r'C:\Program Files\Blender Foundation\Blender 4.4\blender-launcher.exe'
-        if os.path.exists(blender_path):
-            try:
-                # 构建启动命令
-                cmd = [
-                    blender_path
-                ]
-
-                # 启动Blender
-                process = subprocess.Popen(cmd)
-                print(f"已打开Blender")
-
-                return True
-
-            except Exception as e:
-                print(f"启动Blender时发生错误: {str(e)}")
-                return False
-
-        else:
+        # 获取当前脚本目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Blender脚本路径
+        blender_script_path = os.path.join(current_dir, "blender_script.py")
+        
+        # 检查脚本是否存在
+        if not os.path.exists(blender_script_path):
+            print(f"错误: Blender脚本不存在: {blender_script_path}")
+            return False
+        
+        # 从配置文件获取Blender路径
+        blender_path = get_path('blender_path')
+        if not os.path.exists(blender_path):
             print(f"未找到Blender: {blender_path}")
             return False
-    
+            
+        try:
+            # 构建启动命令，使用--python参数执行脚本
+            cmd = [
+                blender_path,
+                '--python', blender_script_path
+            ]
+
+            # 启动Blender并执行脚本
+            print(f"正在启动Blender并执行脚本: {blender_script_path}")
+            process = subprocess.Popen(cmd)
+            print(f"已启动Blender进程，PID: {process.pid}")
+            
+            # 等待Blender启动完成
+            time.sleep(5)
+            
+            return True
+
+        except Exception as e:
+            print(f"启动Blender时发生错误: {str(e)}")
+            return False
+
     except Exception as e:
-        print(f"打开Blender时发生错误: {str(e)}")
+        print(f"运行Blender时发生错误: {str(e)}")
         return False
 
 def match_template():
@@ -372,8 +404,8 @@ def match_template():
         import os
         from datetime import datetime
         
-        # 模板图片路径
-        template_path = r"C:\Users\leili\Downloads\PixPin_2025-04-29_11-11-22.png"
+        # 从配置文件获取模板图片路径
+        template_path = get_path('template_image_path')
         
         if not os.path.exists(template_path):
             print(f"未找到模板图片: {template_path}")
@@ -665,7 +697,10 @@ def match_template():
 
 if __name__ == "__main__":
     # 设置建筑地址
-    address = "10912 Yukon Ave S"
+    # address = "10912 Yukon Ave S"
+    
+    # 从配置文件获取地址
+    address = get_setting('address')
     
     try:
         # 获取经纬度

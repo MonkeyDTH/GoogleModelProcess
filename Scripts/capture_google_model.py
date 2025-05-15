@@ -2,8 +2,8 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-06 15:53:28
-FilePath: /GoogleModelProcess/Scripts/open_google_map.py
+LastEditTime: 2025-05-15 15:50:46
+FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 
 '''
 import os
@@ -356,6 +356,26 @@ def capture_frame():
         print(f"截取帧时发生错误: {str(e)}")
         return False
 
+def check_rdc_file_exists():
+    """
+    检查RDC文件是否存在
+    
+    从配置文件中读取RDC文件路径，并检查文件是否存在
+    
+    返回:
+        bool: 文件是否存在
+    """
+    # 从配置文件获取RDC文件路径
+    rdc_path = get_path('rdc_path')
+    
+    # 检查文件是否存在
+    if os.path.exists(rdc_path):
+        logI(f"找到RDC文件: {rdc_path}")
+        return True
+    else:
+        logW(f"未找到RDC文件: {rdc_path}")
+        return False
+
 def open_blender():
     """
     打开Blender并执行内部脚本
@@ -476,291 +496,198 @@ def match_template():
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         screenshot_gray = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
         
-        # 使用SIFT特征检测器
-        print("正在提取特征点...")
-        sift = cv2.SIFT_create()
+        # 尝试使用SIFT特征检测器
+        try:
+            print("尝试使用SIFT特征检测器...")
+            sift = cv2.SIFT_create()
+            
+            # 在模板和截图中检测关键点和描述符
+            kp1, des1 = sift.detectAndCompute(template_gray, None)
+            kp2, des2 = sift.detectAndCompute(screenshot_gray, None)
+            
+            # 使用FLANN匹配器进行特征匹配
+            FLANN_INDEX_KDTREE = 1
+            index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+            search_params = dict(checks=50)
+            flann = cv2.FlannBasedMatcher(index_params, search_params)
+            
+            # 获取匹配结果
+            matches = flann.knnMatch(des1, des2, k=2)
+            
+            # 应用Lowe's比率测试筛选好的匹配
+            good_matches = []
+            for m, n in matches:
+                if m.distance < 0.7 * n.distance:
+                    good_matches.append(m)
+            
+            print(f"SIFT找到 {len(good_matches)} 个良好匹配点")
+            
+            # 如果找到足够的好匹配点，处理匹配结果
+            min_match_count = 10
+            if len(good_matches) >= min_match_count:
+                return process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+                                      template_path, screenshot_path, timestamp, save_dir, "SIFT")
+            else:
+                print("SIFT匹配点不足，尝试使用ORB特征检测器...")
+        except Exception as e:
+            print(f"SIFT特征检测失败: {str(e)}，尝试使用ORB特征检测器...")
         
-        # 在模板和截图中检测关键点和描述符
-        kp1, des1 = sift.detectAndCompute(template_gray, None)
-        kp2, des2 = sift.detectAndCompute(screenshot_gray, None)
+        # 尝试使用ORB特征检测器
+        try:
+            print("使用ORB特征检测器...")
+            orb = cv2.ORB_create(nfeatures=1000)
+            
+            # 在模板和截图中检测关键点和描述符
+            kp1, des1 = orb.detectAndCompute(template_gray, None)
+            kp2, des2 = orb.detectAndCompute(screenshot_gray, None)
+            
+            # 使用暴力匹配器进行特征匹配
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            
+            # 获取匹配结果
+            matches = bf.match(des1, des2)
+            
+            # 按距离排序
+            matches = sorted(matches, key=lambda x: x.distance)
+            
+            # 选择前N个最佳匹配
+            good_matches = matches[:50] if len(matches) > 50 else matches
+            
+            print(f"ORB找到 {len(good_matches)} 个良好匹配点")
+            
+            # 如果找到足够的好匹配点，处理匹配结果
+            min_match_count = 10
+            if len(good_matches) >= min_match_count:
+                return process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+                                      template_path, screenshot_path, timestamp, save_dir, "ORB")
+            else:
+                print("ORB匹配点不足，无法找到目标")
+                return False
+        except Exception as e:
+            print(f"ORB特征检测失败: {str(e)}")
+            return False
+            
+    except Exception as e:
+        print(f"模板匹配过程中发生错误: {str(e)}")
+        return False
+
+def process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+                   template_path, screenshot_path, timestamp, save_dir, method_name):
+    """
+    处理特征匹配结果，计算目标位置并保存结果
+    
+    参数:
+        good_matches: 良好的特征匹配点列表
+        kp1: 模板图像的关键点
+        kp2: 截图的关键点
+        template_gray: 灰度模板图像
+        screenshot_cv: 截图的OpenCV格式
+        template: 原始模板图像
+        template_path: 模板图像路径
+        screenshot_path: 截图路径
+        timestamp: 时间戳
+        save_dir: 保存目录
+        method_name: 使用的特征检测方法名称
+    
+    返回:
+        bool: 处理是否成功
+    """
+    import cv2
+    import numpy as np
+    import os
+    
+    try:
+        print(f"正在处理{method_name}特征匹配结果...")
         
-        # 使用FLANN匹配器进行特征匹配
-        print("正在进行特征匹配...")
-        FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
-        
-        # 获取匹配结果
-        matches = flann.knnMatch(des1, des2, k=2)
-        
-        # 应用Lowe's比率测试筛选好的匹配
-        good_matches = []
-        for m, n in matches:
-            if m.distance < 0.7 * n.distance:
-                good_matches.append(m)
-        
-        print(f"找到 {len(good_matches)} 个良好匹配点")
-        
-        # 如果找到足够的好匹配点
-        min_match_count = 10
-        if len(good_matches) >= min_match_count:
-            # 提取匹配点的坐标
+        # 提取匹配点的坐标
+        if method_name == "SIFT":
             src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
             dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-            
-            # 计算单应性矩阵
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-            matchesMask = mask.ravel().tolist()
-            
-            # 获取模板图像的尺寸
-            h, w = template_gray.shape
-            
-            # 定义模板图像的四个角点
-            pts = np.float32([[0, 0], [0, h-1], [w-1, h-1], [w-1, 0]]).reshape(-1, 1, 2)
-            
-            # 使用单应性矩阵转换角点坐标
-            dst = cv2.perspectiveTransform(pts, M)
-            
-            # 计算目标中心点
-            center_x = int(np.mean(dst[:, 0, 0]))
-            center_y = int(np.mean(dst[:, 0, 1]))
-            
-            # 在结果图上绘制边界框
-            result_image = screenshot_cv.copy()
-            cv2.polylines(result_image, [np.int32(dst)], True, (0, 255, 0), 3)
-            
-            # 在结果图上标记中心点
-            cv2.circle(result_image, (center_x, center_y), 10, (0, 0, 255), -1)
-            
-            print(f"找到目标: 中心坐标 = ({center_x}, {center_y})")
-            
-            # 绘制匹配结果
+        else:  # ORB
+            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+        
+        # 计算单应性矩阵
+        M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        matchesMask = mask.ravel().tolist()
+        
+        # 获取模板图像的尺寸
+        h, w = template_gray.shape
+        
+        # 定义模板图像的四个角点
+        pts = np.float32([[0, 0], [0, h-1], [w-1, h-1], [w-1, 0]]).reshape(-1, 1, 2)
+        
+        # 使用单应性矩阵转换角点坐标
+        dst = cv2.perspectiveTransform(pts, M)
+        
+        # 计算目标中心点
+        center_x = int(np.mean(dst[:, 0, 0]))
+        center_y = int(np.mean(dst[:, 0, 1]))
+        
+        # 在结果图上绘制边界框
+        result_image = screenshot_cv.copy()
+        cv2.polylines(result_image, [np.int32(dst)], True, (0, 255, 0), 3)
+        
+        # 在结果图上标记中心点
+        cv2.circle(result_image, (center_x, center_y), 10, (0, 0, 255), -1)
+        
+        print(f"找到目标: 中心坐标 = ({center_x}, {center_y})")
+        
+        # 绘制匹配结果
+        if method_name == "SIFT":
             draw_params = dict(
                 matchColor=(0, 255, 0),
                 singlePointColor=None,
                 matchesMask=matchesMask,
                 flags=2
             )
-            
             match_img = cv2.drawMatches(template, kp1, screenshot_cv, kp2, good_matches, None, **draw_params)
-            
-            # 保存结果图
-            result_path = os.path.join(save_dir, f"match_result_{timestamp}.png")
-            cv2.imwrite(result_path, result_image)
-            
-            # 保存匹配点图
-            matches_path = os.path.join(save_dir, f"matches_{timestamp}.png")
-            cv2.imwrite(matches_path, match_img)
-            
-            print(f"匹配结果已保存至: {result_path}")
-            print(f"匹配点图已保存至: {matches_path}")
-            
-            # 将匹配结果保存到文本文件
-            result_txt_path = os.path.join(save_dir, f"match_coordinates_{timestamp}.txt")
-            with open(result_txt_path, 'w') as f:
-                f.write(f"模板图片: {template_path}\n")
-                f.write(f"截图时间: {timestamp}\n")
-                f.write(f"匹配方法: SIFT特征点匹配\n")
-                f.write(f"良好匹配点数量: {len(good_matches)}\n\n")
-                f.write(f"目标中心坐标: ({center_x}, {center_y})\n")
-                f.write(f"目标边界框坐标:\n")
-                for i, point in enumerate(np.int32(dst)):
-                    f.write(f"  点{i+1}: ({point[0][0]}, {point[0][1]})\n")
-            
-            print(f"匹配坐标已保存至: {result_txt_path}")
-            
-            # 获取目标边界框的四个角点坐标
-            points = np.int32(dst)
-            min_x = min(point[0][0] for point in points)
-            min_y = min(point[0][1] for point in points)
-            max_x = max(point[0][0] for point in points)
-            max_y = max(point[0][1] for point in points)
-            
-            # 添加一些边距
-            padding = 10
-            min_x = max(0, min_x - padding)
-            min_y = max(0, min_y - padding)
-            max_x = min(screenshot_cv.shape[1], max_x + padding)
-            max_y = min(screenshot_cv.shape[0], max_y + padding)
-
-            # 切换到Blender窗口
-            print("切换回Blender窗口...")
-            activate_window("Blender")
-            time.sleep(1)
-
-            # 尝试点击3D视图区域中心以确保焦点
-            screen_width, screen_height = pyautogui.size()
-            pyautogui.click(screen_width // 2, screen_height // 2)
-            time.sleep(0.5)
-            
-            # 按Tab键切换到编辑模式
-            logD("按Tab键切换到编辑模式...")
-            pyautogui.press('tab')
-            time.sleep(1)
-            
-            # 按下组合键alt+Z切换透视框选模式
-            pyautogui.hotkey('alt', 'z')
-            time.sleep(0.5)
-            
-            # 移动到左上角位置开始框选
-            logD(f"移动鼠标到左上角位置: ({min_x}, {min_y})")
-            pyautogui.moveTo(min_x, min_y, duration=0.5)
-            
-            # 按下鼠标左键开始框选
-            pyautogui.mouseDown()
-            time.sleep(0.2)
-            
-            # 移动鼠标到右下角完成框选
-            logD(f"移动鼠标到右下角位置: ({max_x}, {max_y})")
-            pyautogui.moveTo(max_x, max_y, duration=0.5)
-            time.sleep(0.2)
-            
-            # 释放鼠标左键完成框选
-            pyautogui.mouseUp()
-            time.sleep(0.5)
-            logD("已完成目标区域框选")
-            
-            # 按下Shift+ctrl+D删除其余目标
-            from pywinauto import keyboard
-            keyboard.send_keys('^+d')
-            time.sleep(0.5)
-            logI("已删除周围杂物")
-
-            # 创建导出信号文件
-            export_signal_file = os.path.join(project_dir, "export_mesh.signal")
-            with open(export_signal_file, 'w') as f:
-                f.write(str(datetime.now()))
-            
-            print("已创建导出信号文件，等待Blender响应...")
-            
-            # 等待导出完成信号
-            export_done_file = os.path.join(project_dir, "export_done.signal")
-            
-            # 等待导出完成
-            max_wait_time = 60  # 最长等待1分钟
-            start_time = time.time()
-            
-            while not os.path.exists(export_done_file):
-                if time.time() - start_time > max_wait_time:
-                    logW("等待导出完成超时")
-                    return False
-                    
-                logI("等待Blender导出完成...")
-                time.sleep(2)
-            
-            # 删除信号文件
-            if os.path.exists(export_signal_file):
-                os.remove(export_signal_file)
-            if os.path.exists(export_done_file):
-                os.remove(export_done_file)
-            logI("Mesh导出完成")
-
-            return (center_x, center_y)
-            
-        else:
-            logW(f"未找到足够的匹配点 (找到 {len(good_matches)}/{min_match_count})")
-            
-            # 尝试使用ORB特征检测器作为备选方案
-            logI("尝试使用ORB特征检测器...")
-            orb = cv2.ORB_create()
-            
-            # 在模板和截图中检测关键点和描述符
-            kp1_orb, des1_orb = orb.detectAndCompute(template_gray, None)
-            kp2_orb, des2_orb = orb.detectAndCompute(screenshot_gray, None)
-            
-            # 使用暴力匹配器
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-            
-            # 获取匹配结果
-            matches_orb = bf.match(des1_orb, des2_orb)
-            
-            # 按距离排序
-            matches_orb = sorted(matches_orb, key=lambda x: x.distance)
-            
-            # 取前30个匹配
-            good_matches_orb = matches_orb[:30]
-            
-            print(f"ORB找到 {len(good_matches_orb)} 个匹配点")
-            
-            if len(good_matches_orb) >= min_match_count:
-                # 绘制ORB匹配结果
-                orb_match_img = cv2.drawMatches(template, kp1_orb, screenshot_cv, kp2_orb, good_matches_orb, None, flags=2)
-                
-                # 保存ORB匹配结果
-                orb_matches_path = os.path.join(save_dir, f"orb_matches_{timestamp}.png")
-                cv2.imwrite(orb_matches_path, orb_match_img)
-                
-                print(f"ORB匹配结果已保存至: {orb_matches_path}")
-                
-                # 计算匹配点的平均位置作为目标中心
-                src_pts_orb = np.float32([kp1_orb[m.queryIdx].pt for m in good_matches_orb])
-                dst_pts_orb = np.float32([kp2_orb[m.trainIdx].pt for m in good_matches_orb])
-                
-                # 计算目标中心
-                center_x_orb = int(np.mean([pt[0] for pt in dst_pts_orb]))
-                center_y_orb = int(np.mean([pt[1] for pt in dst_pts_orb]))
-                
-                print(f"ORB找到目标: 中心坐标 = ({center_x_orb}, {center_y_orb})")
-                
-                # 将ORB匹配结果保存到文本文件
-                result_txt_path = os.path.join(save_dir, f"orb_match_coordinates_{timestamp}.txt")
-                with open(result_txt_path, 'w') as f:
-                    f.write(f"模板图片: {template_path}\n")
-                    f.write(f"截图时间: {timestamp}\n")
-                    f.write(f"匹配方法: ORB特征点匹配\n")
-                    f.write(f"匹配点数量: {len(good_matches_orb)}\n\n")
-                    f.write(f"目标中心坐标: ({center_x_orb}, {center_y_orb})\n")
-                
-                # 按Tab键切换到编辑模式
-                print("按Tab键切换到编辑模式...")
-                pyautogui.press('tab')
-                time.sleep(1)
-                
-                # 计算匹配点的边界框
-                min_x_orb = int(min([pt[0] for pt in dst_pts_orb]))
-                min_y_orb = int(min([pt[1] for pt in dst_pts_orb]))
-                max_x_orb = int(max([pt[0] for pt in dst_pts_orb]))
-                max_y_orb = int(max([pt[1] for pt in dst_pts_orb]))
-                
-                # 添加一些边距
-                padding = 10
-                min_x_orb = max(0, min_x_orb - padding)
-                min_y_orb = max(0, min_y_orb - padding)
-                max_x_orb = min(screenshot_cv.shape[1], max_x_orb + padding)
-                max_y_orb = min(screenshot_cv.shape[0], max_y_orb + padding)
-                
-                # 移动到左上角位置开始框选
-                print(f"移动鼠标到左上角位置: ({min_x_orb}, {min_y_orb})")
-                pyautogui.moveTo(min_x_orb, min_y_orb, duration=0.5)
-                
-                # 按下鼠标左键开始框选
-                pyautogui.mouseDown()
-                time.sleep(0.2)
-                
-                # 移动鼠标到右下角完成框选
-                print(f"移动鼠标到右下角位置: ({max_x_orb}, {max_y_orb})")
-                pyautogui.moveTo(max_x_orb, max_y_orb, duration=0.5)
-                time.sleep(0.2)
-                
-                # 释放鼠标左键完成框选
-                pyautogui.mouseUp()
-                time.sleep(0.5)
-                
-                print("已完成目标区域框选")
-                
-                return (center_x_orb, center_y_orb)
-            
-            else:
-                logE("SIFT和ORB特征匹配均未找到足够的匹配点，请检查模板图片或尝试其他方法")
-                return False
-
-    except ImportError as e:
-        logEX(f"缺少必要的库: {str(e)}")
-        logI("请安装必要的库: pip install opencv-python numpy pyautogui")
-        return False
+        else:  # ORB
+            draw_params = dict(
+                matchColor=(0, 255, 0),
+                singlePointColor=None,
+                flags=2
+            )
+            match_img = cv2.drawMatches(template, kp1, screenshot_cv, kp2, good_matches, None, **draw_params)
+        
+        # 保存结果图
+        result_path = os.path.join(save_dir, f"match_result_{method_name}_{timestamp}.png")
+        cv2.imwrite(result_path, result_image)
+        
+        # 保存匹配点图
+        matches_path = os.path.join(save_dir, f"matches_{method_name}_{timestamp}.png")
+        cv2.imwrite(matches_path, match_img)
+        
+        print(f"匹配结果已保存至: {result_path}")
+        print(f"匹配点图已保存至: {matches_path}")
+        
+        # 将匹配结果保存到文本文件
+        result_txt_path = os.path.join(save_dir, f"match_coordinates_{method_name}_{timestamp}.txt")
+        with open(result_txt_path, 'w') as f:
+            f.write(f"模板图片: {template_path}\n")
+            f.write(f"截图时间: {timestamp}\n")
+            f.write(f"匹配方法: {method_name}特征点匹配\n")
+            f.write(f"良好匹配点数量: {len(good_matches)}\n\n")
+            f.write(f"目标中心坐标: ({center_x}, {center_y})\n")
+            f.write(f"目标边界框坐标:\n")
+            for i, point in enumerate(np.int32(dst)):
+                f.write(f"  点{i+1}: ({point[0][0]}, {point[0][1]})\n")
+        
+        print(f"匹配坐标已保存至: {result_txt_path}")
+        
+        # 获取目标边界框的四个角点坐标
+        points = np.int32(dst).reshape(4, 2)
+        
+        # 返回匹配结果
+        return {
+            "success": True,
+            "center": (center_x, center_y),
+            "points": points.tolist(),
+            "method": method_name
+        }
+        
     except Exception as e:
-        logEX(f"特征点匹配时发生错误: {str(e)}")
+        print(f"处理{method_name}匹配结果时发生错误: {str(e)}")
         return False
 
 if __name__ == "__main__":
@@ -783,6 +710,9 @@ if __name__ == "__main__":
             launch_renderdoc_and_inject()
             # 截取帧
             capture_frame()
+
+            if not check_rdc_file_exists():
+                raise RuntimeError("未找到RDC文件，无法继续处理")
 
         # 打开Blender
         open_blender()

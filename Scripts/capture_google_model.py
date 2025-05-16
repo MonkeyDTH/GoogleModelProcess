@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-15 15:50:46
+LastEditTime: 2025-05-16 14:25:43
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 
 '''
@@ -40,8 +40,6 @@ def get_coordinates_from_google(address, api_key=None):
     if api_key is None:
         api_key = API_KEY
     
-    logI(f"开始获取地址的经纬度: {address}")
-    
     # 创建Google Maps客户端
     gmaps = googlemaps.Client(key=api_key)
     
@@ -51,10 +49,9 @@ def get_coordinates_from_google(address, api_key=None):
         if geocode_result:
             location = geocode_result[0]['geometry']['location']
             lat, lng = location['lat'], location['lng']
-            logI(f"成功获取经纬度: ({lat}, {lng})")
             return lat, lng
         else:
-            logE(f"无法找到该地址: {address}")
+            logE(f"获取经纬度失败，无法找到该地址: {address}")
             raise ValueError("无法找到该地址")
     except Exception as e:
         logEX(f"Google Maps API错误: {str(e)}")
@@ -71,7 +68,7 @@ def launch_chrome_google_map(lat=None, lng=None, zoom=None):
     if zoom is None:
         zoom = int(get_setting('map_zoom', 21))
     
-    logI(f"准备打开Google地图，经纬度: ({lat}, {lng})，缩放级别: {zoom}")
+    logD(f"准备打开Google地图，经纬度: ({lat}, {lng})，缩放级别: {zoom}")
     
     # 构建卫星视图的URL
     url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
@@ -140,15 +137,15 @@ def activate_window(title):
             window = chrome_gpu_windows[0]
             if not window.isActive:
                 window.activate()
-            print(f"已激活窗口: {window.title}")
+            logD(f"已激活窗口: {window.title}")
             time.sleep(0.5)  # 给窗口激活一点时间
             return True
         else:
-            print("未找到Google Chrome Gpu窗口")
+            logE(f"未找到{title}窗口")
             return False
             
     except ImportError:
-        print("请安装pygetwindow: pip install pygetwindow")
+        logE("请安装pygetwindow: pip install pygetwindow")
         return False
 
 def launch_renderdoc_and_inject():
@@ -159,7 +156,7 @@ def launch_renderdoc_and_inject():
     renderdoc_path = get_path('renderdoc_path')
     
     if not os.path.exists(renderdoc_path):
-        print(f"未找到RenderDoc: {renderdoc_path}")
+        logEX(f"未找到RenderDoc: {renderdoc_path}")
         return False
         
     try:
@@ -175,7 +172,7 @@ def launch_renderdoc_and_inject():
         
         # 启动RenderDoc
         subprocess.Popen(cmd)
-        print(f"已启动RenderDoc")
+        logI(f"已启动RenderDoc")
         
         # 增加初始等待时间
         time.sleep(3)
@@ -197,11 +194,11 @@ def launch_renderdoc_and_inject():
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    print(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
+                    logD(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
                     app = Application(backend="uia").connect(path=renderdoc_path, timeout=20)
                     main_window = app.window(title_re=".*RenderDoc.*")
                     main_window.wait('visible', timeout=20)
-                    print("成功连接到RenderDoc窗口")
+                    logD("成功连接到RenderDoc窗口")
                     
                     # 获取窗口句柄
                     hwnd = main_window.handle
@@ -222,25 +219,25 @@ def launch_renderdoc_and_inject():
                     break
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        print(f"连接失败: {str(e)}，等待5秒后重试...")
+                        logW(f"连接失败: {str(e)}，等待5秒后重试...")
                         time.sleep(5)
                     else:
                         raise Exception("无法连接到RenderDoc窗口，请确保程序已正确启动")
             
             # 点击File菜单
-            print("尝试点击File菜单...")
+            logD("尝试点击File菜单...")
             keyboard.send_keys("%{F}")  # Alt+F
             time.sleep(2)
             
             # 选择Inject into Process
-            print("尝试选择Inject into Process...")
+            logD("尝试选择Inject into Process...")
             keyboard.send_keys("I")  # 选择Inject into Process
             time.sleep(1)
             keyboard.send_keys("{ENTER}")
             time.sleep(1)
             
             # 先点击进程列表以确保焦点在列表上
-            print("尝试搜索Google Chrome Gpu进程...")
+            logD("尝试搜索Google Chrome Gpu进程...")
             pyautogui.moveTo(new_left + 80, new_top + 550, duration=0.1)  # 调整坐标
             pyautogui.click()
             time.sleep(0.5)
@@ -250,7 +247,7 @@ def launch_renderdoc_and_inject():
             time.sleep(1)
 
             # 在进程选择对话框中点击
-            print("尝试在进程列表中选择Chrome GPU进程...")
+            logD("尝试在进程列表中选择Chrome GPU进程...")
             # 点击搜索到的第一个进程
             pyautogui.moveTo(new_left + 80, new_top + 275, duration=0.1)  # 调整坐标
             pyautogui.click()
@@ -261,30 +258,34 @@ def launch_renderdoc_and_inject():
             time.sleep(1)
 
             # 等待注入完成
-            activate_window("Google Chrome Gpu")
+            if not activate_window("Google Chrome Gpu"):
+                return False
             time.sleep(1)
 
             # 按回车确认进入
             keyboard.send_keys('{ENTER}')
             time.sleep(1)
             
-            print("已完成注入操作")
+            logI("已完成注入操作")
             return True
             
         except ImportError:
-            print("请先安装必要的库: pip install pywinauto pyautogui")
+            logE("请先安装必要的库: pip install pywinauto pyautogui")
             return False
         except Exception as e:
-            print(f"操作RenderDoc窗口时发生错误: {str(e)}")
+            logE(f"操作RenderDoc窗口时发生错误: {str(e)}")
             return False
             
     except Exception as e:
-        print(f"启动RenderDoc时发生错误: {str(e)}")
+        logEX(f"启动RenderDoc时发生错误: {str(e)}")
         return False
 
-def capture_frame():
+def capture_frame(filename=None):
     """
     截取当前屏幕到RenderDoc中
+    
+    参数:
+        filename: 预先计算好的文件名，如果提供则直接使用
     """
     try:
         # 切换到Chrome窗口
@@ -306,7 +307,7 @@ def capture_frame():
         time.sleep(0.5)
         
         for _ in range(2):
-            duration = 0.2
+            duration = 0.3
             # 向左移动
             pyautogui.moveTo(center_x - 200, center_y, duration=duration)
             pyautogui.moveTo(center_x, center_y, duration=duration)
@@ -330,14 +331,24 @@ def capture_frame():
         # 释放鼠标左键
         pyautogui.mouseUp()
         time.sleep(0.5)
-        print("已完成鼠标移动和截图操作")
+        logI("已完成鼠标移动和截图操作")
 
         # 切换到RenderDoc窗口
         activate_window("RenderDoc")
         time.sleep(1)
 
+        # 处理文件名
+        if filename:
+            # 直接使用预先计算好的文件名
+            save_filename = filename
+            logI(f"使用预先计算的文件名保存RDC: {save_filename}")
+        else:
+            # 如果没有提供地址和文件名，使用时间戳
+            from datetime import datetime
+            save_filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            logI(f"未提供地址或文件名，使用时间戳文件名: {save_filename}")
+
         # 保存截取结果
-        print("正在保存截取结果...")
         pyautogui.moveTo(1275, 1100, duration=0.3)
         pyautogui.click()
         pyautogui.rightClick()
@@ -345,35 +356,64 @@ def capture_frame():
         pyautogui.moveTo(1300, 1155, duration=0.3)
         pyautogui.click()
         time.sleep(3)
-        pyautogui.write("temp")
-        pyautogui.press('enter')
-        time.sleep(0.3)
-        pyautogui.press('enter')
+
+        # # 确保切换到英文输入法
+        # try:
+        #     import win32api
+        #     import win32con
+        #     # 设置为英文输入法（美国英语）
+        #     win32api.LoadKeyboardLayout('00000409', win32con.KLF_ACTIVATE)
+        #     logI("已切换到英文输入法")
+        # except ImportError:
+        #     logW("未安装win32api，使用快捷键切换输入法")
         
-        return True
+        # 清空当前输入框内容（以防有默认文本）
+        pyautogui.hotkey('ctrl', 'a')
+        pyautogui.press('delete')
+        time.sleep(0.3)
+        
+        # 输入文件名（使用interval参数确保字符输入正确）
+        logI(f"正在输入文件名: {save_filename}")
+        pyautogui.press('shift')
+        time.sleep(0.5)
+        pyautogui.write(save_filename, interval=0.05)  # 增加输入间隔，提高可靠性
+        time.sleep(0.5)
+        pyautogui.press('enter')
+        time.sleep(0.5)  # 增加等待时间
+        
+        # TODO:处理可能出现的覆盖确认对话框
+        
+        # 返回完整的文件路径，用于后续检查
+        save_dir = get_path('rdc_dir')
+        if save_dir:
+            full_path = os.path.join(save_dir, f"{save_filename}.rdc")
+        else:
+            # 如果没有指定保存目录，则使用默认位置（通常是用户的"Documents"文件夹）
+            full_path = f"{save_filename}.rdc"  # 这里只返回文件名，因为不确定默认保存位置
+            
+        logI(f"RDC文件已保存: {full_path}")
+        return full_path
         
     except Exception as e:
-        print(f"截取帧时发生错误: {str(e)}")
+        logE(f"截取帧时发生错误: {str(e)}")
         return False
 
-def check_rdc_file_exists():
+def check_rdc_file_exists(rdc_file_path=None):
     """
     检查RDC文件是否存在
     
-    从配置文件中读取RDC文件路径，并检查文件是否存在
+    参数:
+        rdc_file_path: RDC文件的完整路径
     
     返回:
         bool: 文件是否存在
     """
-    # 从配置文件获取RDC文件路径
-    rdc_path = get_path('rdc_path')
-    
     # 检查文件是否存在
-    if os.path.exists(rdc_path):
-        logI(f"找到RDC文件: {rdc_path}")
+    if os.path.exists(rdc_file_path):
+        logI(f"找到RDC文件: {rdc_file_path}")
         return True
     else:
-        logW(f"未找到RDC文件: {rdc_path}")
+        logW(f"未找到RDC文件: {rdc_file_path}")
         return False
 
 def open_blender():
@@ -389,13 +429,13 @@ def open_blender():
         
         # 检查脚本是否存在
         if not os.path.exists(blender_script_path):
-            print(f"错误: Blender脚本不存在: {blender_script_path}")
+            logE(f"错误: Blender脚本不存在: {blender_script_path}")
             return False
         
         # 从配置文件获取Blender路径
         blender_path = get_path('blender_path')
         if not os.path.exists(blender_path):
-            print(f"未找到Blender: {blender_path}")
+            logE(f"未找到Blender: {blender_path}")
             return False
             
         try:
@@ -690,14 +730,64 @@ def process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, templa
         print(f"处理{method_name}匹配结果时发生错误: {str(e)}")
         return False
 
+def terminate_processes(process_names):
+    """
+    终止指定名称的进程
+    
+    参数:
+        process_names (dict): 进程名称和匹配方式的字典，格式为 {进程名: 是否使用部分匹配}
+                             例如: {'chrome.exe': False, 'renderdoc': True}
+                             False表示精确匹配，True表示部分匹配
+    
+    返回:
+        bool: 是否成功终止所有指定进程
+    """
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            for proc_name, partial_match in process_names.items():
+                try:
+                    if (partial_match and proc_name.lower() in proc.name().lower()) or \
+                       (not partial_match and proc.name().lower() == proc_name.lower()):
+                        proc.terminate()
+                        logD(f"已终止{proc.name()}进程: {proc.pid}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    logW(f"无法终止进程 {proc.name()} (PID: {proc.pid}): {str(e)}")
+                    continue
+                    
+        # 等待进程完全关闭
+        time.sleep(2)
+        return True
+    except Exception as e:
+        logW(f"关闭进程时发生错误: {str(e)}")
+        return False
+
+def clear_processes():
+    """
+    关闭所有相关进程: Chrome, RenderDoc, Blender
+    """
+    terminate_processes({'chrome.exe': False, 'renderdoc': True})
+    try:
+        # 终止Chrome和RenderDoc进程
+        process_names = {
+            'chrome.exe': False,    # 精确匹配
+            'renderdoc': True,      # 部分匹配
+            'Blender': True         # 部分匹配
+        }
+        terminate_processes(process_names)
+    except Exception as e:
+        logW(f"关闭进程时发生错误: {str(e)}")
+
+
 if __name__ == "__main__":
     # 设置建筑地址
     # address = "10912 Yukon Ave S"
     
     # 从配置文件获取地址
     address = get_setting('address')
+    filename = address.replace(' ', '_')
     
     try:
+        clear_processes()
         b_capture = True
         if b_capture:
             # 获取经纬度
@@ -707,11 +797,17 @@ if __name__ == "__main__":
             # 执行启动并获取进程ID
             chrome_pids = launch_chrome_google_map(lat, lng)
             # 启动RenderDoc
-            launch_renderdoc_and_inject()
+            if not launch_renderdoc_and_inject():
+                raise RuntimeError("启动RenderDoc或注入失败")
             # 截取帧
-            capture_frame()
+            rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
+            if os.path.exists(rdc_fname):
+                os.remove(rdc_fname)
+            capture_frame(filename)
 
-            if not check_rdc_file_exists():
+            time.sleep(1)
+            if not check_rdc_file_exists(rdc_fname):
+                clear_processes()
                 raise RuntimeError("未找到RDC文件，无法继续处理")
 
         # 打开Blender
@@ -719,6 +815,9 @@ if __name__ == "__main__":
 
         # 匹配模板
         match_template()
+
+        # 清理进程
+        clear_processes()
         
         
     except Exception as e:

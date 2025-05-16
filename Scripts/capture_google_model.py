@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-16 14:25:43
+LastEditTime: 2025-05-16 15:32:43
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 
 '''
@@ -289,7 +289,8 @@ def capture_frame(filename=None):
     """
     try:
         # 切换到Chrome窗口
-        activate_window("Google Chrome")
+        if not activate_window("Google Chrome"):
+            raise ValueError("无法切换到Chrome窗口")
         time.sleep(1)
         
         # 导入pyautogui
@@ -334,7 +335,8 @@ def capture_frame(filename=None):
         logI("已完成鼠标移动和截图操作")
 
         # 切换到RenderDoc窗口
-        activate_window("RenderDoc")
+        if not activate_window("RenderDoc"):
+            raise Exception("无法切换到RenderDoc窗口")
         time.sleep(1)
 
         # 处理文件名
@@ -356,16 +358,6 @@ def capture_frame(filename=None):
         pyautogui.moveTo(1300, 1155, duration=0.3)
         pyautogui.click()
         time.sleep(3)
-
-        # # 确保切换到英文输入法
-        # try:
-        #     import win32api
-        #     import win32con
-        #     # 设置为英文输入法（美国英语）
-        #     win32api.LoadKeyboardLayout('00000409', win32con.KLF_ACTIVATE)
-        #     logI("已切换到英文输入法")
-        # except ImportError:
-        #     logW("未安装win32api，使用快捷键切换输入法")
         
         # 清空当前输入框内容（以防有默认文本）
         pyautogui.hotkey('ctrl', 'a')
@@ -373,7 +365,7 @@ def capture_frame(filename=None):
         time.sleep(0.3)
         
         # 输入文件名（使用interval参数确保字符输入正确）
-        logI(f"正在输入文件名: {save_filename}")
+        logD(f"正在输入文件名: {save_filename}")
         pyautogui.press('shift')
         time.sleep(0.5)
         pyautogui.write(save_filename, interval=0.05)  # 增加输入间隔，提高可靠性
@@ -419,6 +411,9 @@ def check_rdc_file_exists(rdc_file_path=None):
 def open_blender():
     """
     打开Blender并执行内部脚本
+    
+    返回:
+        bool: 操作是否成功
     """
     try:
         # 获取当前脚本目录
@@ -446,42 +441,18 @@ def open_blender():
             ]
 
             # 启动Blender并执行脚本
-            print(f"正在启动Blender并执行脚本: {blender_script_path}")
+            logI(f"启动Blender并执行脚本: {blender_script_path}")
             process = subprocess.Popen(cmd)
-            print(f"已启动Blender进程，PID: {process.pid}")
-            
-            # 等待Blender启动和脚本执行完成
-            signal_file = os.path.join(project_dir, "blender_script_done.signal")
-            
-            # 如果存在旧的信号文件，先删除
-            if os.path.exists(signal_file):
-                os.remove(signal_file)
-            
-            # 等待信号文件出现
-            max_wait_time = 300  # 最长等待5分钟
-            start_time = time.time()
-            
-            while not os.path.exists(signal_file):
-                if time.time() - start_time > max_wait_time:
-                    print("等待Blender脚本执行超时")
-                    return False
-                    
-                print("等待Blender脚本执行完成...")
-                time.sleep(5)
-            
-            # 删除信号文件
-            os.remove(signal_file)
-            logI("Blender脚本执行完成，继续执行后续步骤")
-            
-            return True
 
         except Exception as e:
             logEX(f"启动Blender时发生错误: {str(e)}")
             return False
 
     except Exception as e:
-        print(f"运行Blender时发生错误: {str(e)}")
+        logEX(f"运行Blender时发生错误: {str(e)}")
         return False
+    
+    return True
 
 def match_template():
     """
@@ -489,7 +460,8 @@ def match_template():
     """
     try:
         # 切换到Blender窗口
-        activate_window("Blender")
+        if not activate_window("Blender"):
+            raise Exception("无法切换到Blender窗口")
         time.sleep(1)
         
         # 导入必要的库
@@ -593,7 +565,7 @@ def match_template():
             # 选择前N个最佳匹配
             good_matches = matches[:50] if len(matches) > 50 else matches
             
-            print(f"ORB找到 {len(good_matches)} 个良好匹配点")
+            logD(f"ORB找到 {len(good_matches)} 个良好匹配点")
             
             # 如果找到足够的好匹配点，处理匹配结果
             min_match_count = 10
@@ -601,14 +573,14 @@ def match_template():
                 return process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
                                       template_path, screenshot_path, timestamp, save_dir, "ORB")
             else:
-                print("ORB匹配点不足，无法找到目标")
+                logW("ORB匹配点不足，无法找到目标")
                 return False
         except Exception as e:
-            print(f"ORB特征检测失败: {str(e)}")
+            logE(f"ORB特征检测失败: {str(e)}")
             return False
             
     except Exception as e:
-        print(f"模板匹配过程中发生错误: {str(e)}")
+        logEX(f"模板匹配过程中发生错误: {str(e)}")
         return False
 
 def process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
@@ -785,40 +757,40 @@ if __name__ == "__main__":
     # 从配置文件获取地址
     address = get_setting('address')
     filename = address.replace(' ', '_')
+    rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
+    clear_processes()
     
     try:
-        clear_processes()
-        b_capture = True
-        if b_capture:
-            # 获取经纬度
-            lat, lng = get_coordinates_from_google(address, API_KEY)
-            logI(f"地址: {address}, 经纬度: ({lat}, {lng})")
-            
-            # 执行启动并获取进程ID
-            chrome_pids = launch_chrome_google_map(lat, lng)
-            # 启动RenderDoc
-            if not launch_renderdoc_and_inject():
-                raise RuntimeError("启动RenderDoc或注入失败")
-            # 截取帧
-            rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
-            if os.path.exists(rdc_fname):
-                os.remove(rdc_fname)
-            capture_frame(filename)
+        if not os.path.exists(rdc_fname):
+            ## 不存在之前的结果，则执行抓取
+            b_capture = True
+            if b_capture:
+                # 获取经纬度
+                lat, lng = get_coordinates_from_google(address, API_KEY)
+                logI(f"地址: {address}, 经纬度: ({lat}, {lng})")
+                
+                # 执行启动并获取进程ID
+                chrome_pids = launch_chrome_google_map(lat, lng)
+                # 启动RenderDoc
+                if not launch_renderdoc_and_inject():
+                    raise RuntimeError("启动RenderDoc或注入失败")
+                # 截取帧
+                if os.path.exists(rdc_fname):
+                    os.remove(rdc_fname)
+                capture_frame(filename)
 
-            time.sleep(1)
-            if not check_rdc_file_exists(rdc_fname):
-                clear_processes()
-                raise RuntimeError("未找到RDC文件，无法继续处理")
+                time.sleep(1)
+                if not check_rdc_file_exists(rdc_fname):
+                    clear_processes()
+                    raise RuntimeError("未找到RDC文件，无法继续处理")
 
         # 打开Blender
-        open_blender()
-
-        # 匹配模板
-        match_template()
+        if open_blender():
+            # 匹配模板
+            match_template()
 
         # 清理进程
         clear_processes()
-        
         
     except Exception as e:
         logEX(f"错误: {str(e)}")

@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-06 15:50:32
+LastEditTime: 2025-05-16 14:56:07
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
@@ -19,7 +19,7 @@ if project_dir not in sys.path:
     sys.path.append(project_dir)
 
 # 导入配置工具和日志工具
-from Scripts.config_utils import get_path, get_log_level, get_log_dir
+from Scripts.config_utils import get_path, get_log_level, get_log_dir, get_setting
 from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
 
 # 初始化日志系统
@@ -29,8 +29,10 @@ def import_rdc():
     """
     导入RenderDoc文件
     """
-
-    rdc_path = get_path('rdc_path')
+    
+    address = get_setting('address')
+    filename = address.replace(' ', '_')
+    rdc_path = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
     # 检查文件是否存在
     if not os.path.exists(rdc_path):
         logE(f"错误: RDC文件不存在: {rdc_path}")
@@ -41,7 +43,7 @@ def import_rdc():
     try:
         bpy.ops.import_rdc.google_maps(filepath=(rdc_path), filter_glob=".rdc", max_blocks=-1)
         logI("已成功导入RenderDoc文件")
-            
+        return True
     except AttributeError as e:
         logE(f"错误: 无法找到RenderDoc导入操作: {str(e)}")
         logE("请确保已安装并启用RenderDoc插件")
@@ -49,6 +51,17 @@ def import_rdc():
     except Exception as e:
         logEX(f"导入RenderDoc文件时发生错误: {str(e)}")
         return False
+    
+
+def get_all_mesh():
+    """
+    获取场景中的所有Mesh对象
+    """
+    mesh_objects = []
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'MESH':
+            mesh_objects.append(obj)
+    return mesh_objects
 
 def set_shading_mode():
     """
@@ -152,9 +165,8 @@ def count_meshes():
             mesh_objects.append(obj.name)
             vertex_count += len(obj.data.vertices)
     
-    print(f"场景中共有 {mesh_count} 个网格物体")
-    # print(f"网格物体列表: {', '.join(mesh_objects)}")
-    print(f"场景中的总顶点数: {vertex_count}")
+    logD(f"场景中共有 {mesh_count} 个网格物体")
+    logD(f"场景中的总顶点数: {vertex_count}")
 
     return mesh_count, mesh_objects
 
@@ -163,17 +175,10 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
     合并场景中所有的Mesh对象
     """
     # 获取所有网格对象
-    mesh_objects = []
-    for obj in bpy.context.scene.objects:
-        if obj.type == 'MESH':
-            mesh_objects.append(obj)
-    
-    if not mesh_objects:
-        print("场景中没有网格物体可合并")
-        return None
+    mesh_objects = get_all_mesh()
     
     # 统计合并前的网格数量
-    print("合并前:")
+    logD("合并前:")
     initial_count, initial_meshes = count_meshes()
     
     # 确保所有对象都被选中
@@ -193,13 +198,11 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
     bpy.context.view_layer.objects.active.name = merged_name
     
     # 统计合并后的网格数量
-    print("\n合并后:")
+    logD("\n合并后:")
     final_count, final_meshes = count_meshes()
     
     # 输出统计结果
-    print(f"\n合并统计:")
-    print(f"初始网格数量: {initial_count}")
-    print(f"最终网格数量: {final_count}")
+    logI(f"\n合并统计:\n初始网格数量: {initial_count}\n最终网格数量: {final_count}")
     
     return bpy.context.view_layer.objects.active
 
@@ -369,6 +372,15 @@ def main():
         
         # 导入rdc文件
         ret = import_rdc()
+        if not ret:
+            logE("导入rdc文件失败")
+            exit(-1)
+        
+        # 检查是否存在Mesh
+        mesh_objects = get_all_mesh()
+        if not mesh_objects:
+            logE("场景中没有Mesh对象")
+            exit(-1)
 
         # 设置视图着色模式
         set_shading_mode()
@@ -382,11 +394,12 @@ def main():
         # 合并所有网格
         merged_mesh = merge_all_meshes()
         if merged_mesh:
-            print(f"所有网格已成功合并为: {merged_mesh.name}")
+            logD(f"所有网格已成功合并为: {merged_mesh.name}")
             # 合并后居中
             center_mesh_origin(merged_mesh)
         else:
-            print("合并操作失败")
+            logE("合并操作失败")
+            exit(-1)
         
         logI("Blender内部脚本执行完成")
         

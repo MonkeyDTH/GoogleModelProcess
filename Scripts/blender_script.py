@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-16 14:56:07
+LastEditTime: 2025-05-19 11:14:43
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
@@ -25,13 +25,30 @@ from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
 # 初始化日志系统
 logger = setup_logger(log_level=get_log_level(), log_dir=get_log_dir())
 
+def remove_chinese_chars(text):
+    """
+    去除字符串中的所有中文字符
+    参数:
+        text: 输入字符串
+    返回:
+        去除中文字符后的字符串
+    实现原理:
+        1. 使用正则表达式匹配所有Unicode中文字符范围
+        2. 将这些字符替换为空字符串
+    """
+    import re
+    # 匹配所有中文字符的正则表达式
+    # 包括基本汉字(4E00-9FFF)、扩展A区(3400-4DBF)、扩展B区(20000-2A6DF)等
+    pattern = re.compile('[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df\U0002a700-\U0002b73f\U0002b740-\U0002b81f\U0002b820-\U0002ceaf]')
+    return pattern.sub('', text)
+
 def import_rdc():
     """
     导入RenderDoc文件
     """
-    
+
     address = get_setting('address')
-    filename = address.replace(' ', '_')
+    filename = remove_chinese_chars(address.replace(' ', '_').replace(",", ""))
     rdc_path = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
     # 检查文件是否存在
     if not os.path.exists(rdc_path):
@@ -43,7 +60,7 @@ def import_rdc():
     try:
         bpy.ops.import_rdc.google_maps(filepath=(rdc_path), filter_glob=".rdc", max_blocks=-1)
         logI("已成功导入RenderDoc文件")
-        return True
+            
     except AttributeError as e:
         logE(f"错误: 无法找到RenderDoc导入操作: {str(e)}")
         logE("请确保已安装并启用RenderDoc插件")
@@ -51,17 +68,6 @@ def import_rdc():
     except Exception as e:
         logEX(f"导入RenderDoc文件时发生错误: {str(e)}")
         return False
-    
-
-def get_all_mesh():
-    """
-    获取场景中的所有Mesh对象
-    """
-    mesh_objects = []
-    for obj in bpy.context.scene.objects:
-        if obj.type == 'MESH':
-            mesh_objects.append(obj)
-    return mesh_objects
 
 def set_shading_mode():
     """
@@ -165,8 +171,9 @@ def count_meshes():
             mesh_objects.append(obj.name)
             vertex_count += len(obj.data.vertices)
     
-    logD(f"场景中共有 {mesh_count} 个网格物体")
-    logD(f"场景中的总顶点数: {vertex_count}")
+    print(f"场景中共有 {mesh_count} 个网格物体")
+    # print(f"网格物体列表: {', '.join(mesh_objects)}")
+    print(f"场景中的总顶点数: {vertex_count}")
 
     return mesh_count, mesh_objects
 
@@ -175,10 +182,17 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
     合并场景中所有的Mesh对象
     """
     # 获取所有网格对象
-    mesh_objects = get_all_mesh()
+    mesh_objects = []
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'MESH':
+            mesh_objects.append(obj)
+    
+    if not mesh_objects:
+        logW("场景中没有网格物体可合并")
+        return None
     
     # 统计合并前的网格数量
-    logD("合并前:")
+    print("合并前:")
     initial_count, initial_meshes = count_meshes()
     
     # 确保所有对象都被选中
@@ -198,11 +212,13 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
     bpy.context.view_layer.objects.active.name = merged_name
     
     # 统计合并后的网格数量
-    logD("\n合并后:")
+    print("\n合并后:")
     final_count, final_meshes = count_meshes()
     
     # 输出统计结果
-    logI(f"\n合并统计:\n初始网格数量: {initial_count}\n最终网格数量: {final_count}")
+    print(f"\n合并统计:")
+    print(f"初始网格数量: {initial_count}")
+    print(f"最终网格数量: {final_count}")
     
     return bpy.context.view_layer.objects.active
 
@@ -372,15 +388,6 @@ def main():
         
         # 导入rdc文件
         ret = import_rdc()
-        if not ret:
-            logE("导入rdc文件失败")
-            exit(-1)
-        
-        # 检查是否存在Mesh
-        mesh_objects = get_all_mesh()
-        if not mesh_objects:
-            logE("场景中没有Mesh对象")
-            exit(-1)
 
         # 设置视图着色模式
         set_shading_mode()
@@ -394,12 +401,26 @@ def main():
         # 合并所有网格
         merged_mesh = merge_all_meshes()
         if merged_mesh:
-            logD(f"所有网格已成功合并为: {merged_mesh.name}")
+            logI(f"所有网格已成功合并为: {merged_mesh.name}")
             # 合并后居中
             center_mesh_origin(merged_mesh)
         else:
             logE("合并操作失败")
-            exit(-1)
+
+        # 设置自动打包外部资源
+        logI("设置自动打包外部资源...")
+        try:
+            # 启用自动打包
+            bpy.data.use_autopack = True
+            # 手动打包所有外部资源
+            bpy.ops.file.pack_all()
+            logI("已成功打包所有外部资源")
+            
+            # 设置文件压缩选项
+            bpy.context.preferences.filepaths.use_file_compression = True
+            logI("已启用文件压缩")
+        except Exception as e:
+            logW(f"设置自动打包资源时发生错误: {str(e)}")
         
         logI("Blender内部脚本执行完成")
         

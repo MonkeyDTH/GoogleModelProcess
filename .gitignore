@@ -11,3 +11,8 @@ exports/
 export_mesh.signal
 templates/
 rdc/
+origin_model/
+processed_model/
+config.ini
+list.txt
+.trae/

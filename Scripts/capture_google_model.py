@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-16 15:32:43
+LastEditTime: 2025-05-19 11:15:21
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 
 '''
@@ -72,7 +72,7 @@ def launch_chrome_google_map(lat=None, lng=None, zoom=None):
     
     # 构建卫星视图的URL
     url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
-    logD(f"Google地图URL: {url}")
+    logI(f"Google地图URL: {url}")
     
     # 从配置文件获取Chrome路径
     chrome_path = get_path('chrome_path')
@@ -194,11 +194,11 @@ def launch_renderdoc_and_inject():
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    logD(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
+                    logI(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
                     app = Application(backend="uia").connect(path=renderdoc_path, timeout=20)
                     main_window = app.window(title_re=".*RenderDoc.*")
                     main_window.wait('visible', timeout=20)
-                    logD("成功连接到RenderDoc窗口")
+                    logI("成功连接到RenderDoc窗口")
                     
                     # 获取窗口句柄
                     hwnd = main_window.handle
@@ -441,8 +441,34 @@ def open_blender():
             ]
 
             # 启动Blender并执行脚本
-            logI(f"启动Blender并执行脚本: {blender_script_path}")
+            print(f"正在启动Blender并执行脚本: {blender_script_path}")
             process = subprocess.Popen(cmd)
+            print(f"已启动Blender进程，PID: {process.pid}")
+            
+            # 等待Blender启动和脚本执行完成
+            signal_file = os.path.join(project_dir, "blender_script_done.signal")
+            
+            # 如果存在旧的信号文件，先删除
+            if os.path.exists(signal_file):
+                os.remove(signal_file)
+            
+            # 等待信号文件出现
+            max_wait_time = 300  # 最长等待5分钟
+            start_time = time.time()
+            
+            while not os.path.exists(signal_file):
+                if time.time() - start_time > max_wait_time:
+                    print("等待Blender脚本执行超时")
+                    return False
+                    
+                print("等待Blender脚本执行完成...")
+                time.sleep(5)
+            
+            # 删除信号文件
+            os.remove(signal_file)
+            logI("Blender脚本执行完成，继续执行后续步骤")
+            
+            return True
 
         except Exception as e:
             logEX(f"启动Blender时发生错误: {str(e)}")
@@ -451,10 +477,8 @@ def open_blender():
     except Exception as e:
         logEX(f"运行Blender时发生错误: {str(e)}")
         return False
-    
-    return True
 
-def match_template():
+def match_template(filename:str):
     """
     使用特征点匹配方法查找图像中的目标
     """
@@ -472,7 +496,8 @@ def match_template():
         from datetime import datetime
         
         # 从配置文件获取模板图片路径
-        template_path = get_path('template_image_path')
+        template_dir = get_path('template_image_dir')
+        template_path = os.path.join(template_dir, f"{filename}.png")
         
         if not os.path.exists(template_path):
             print(f"未找到模板图片: {template_path}")
@@ -537,47 +562,47 @@ def match_template():
             # 如果找到足够的好匹配点，处理匹配结果
             min_match_count = 10
             if len(good_matches) >= min_match_count:
-                return process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+                process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
                                       template_path, screenshot_path, timestamp, save_dir, "SIFT")
             else:
                 print("SIFT匹配点不足，尝试使用ORB特征检测器...")
         except Exception as e:
             print(f"SIFT特征检测失败: {str(e)}，尝试使用ORB特征检测器...")
         
-        # 尝试使用ORB特征检测器
-        try:
-            print("使用ORB特征检测器...")
-            orb = cv2.ORB_create(nfeatures=1000)
+        # # 尝试使用ORB特征检测器
+        # try:
+        #     print("使用ORB特征检测器...")
+        #     orb = cv2.ORB_create(nfeatures=1000)
             
-            # 在模板和截图中检测关键点和描述符
-            kp1, des1 = orb.detectAndCompute(template_gray, None)
-            kp2, des2 = orb.detectAndCompute(screenshot_gray, None)
+        #     # 在模板和截图中检测关键点和描述符
+        #     kp1, des1 = orb.detectAndCompute(template_gray, None)
+        #     kp2, des2 = orb.detectAndCompute(screenshot_gray, None)
             
-            # 使用暴力匹配器进行特征匹配
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        #     # 使用暴力匹配器进行特征匹配
+        #     bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
             
-            # 获取匹配结果
-            matches = bf.match(des1, des2)
+        #     # 获取匹配结果
+        #     matches = bf.match(des1, des2)
             
-            # 按距离排序
-            matches = sorted(matches, key=lambda x: x.distance)
+        #     # 按距离排序
+        #     matches = sorted(matches, key=lambda x: x.distance)
             
-            # 选择前N个最佳匹配
-            good_matches = matches[:50] if len(matches) > 50 else matches
+        #     # 选择前N个最佳匹配
+        #     good_matches = matches[:50] if len(matches) > 50 else matches
             
-            logD(f"ORB找到 {len(good_matches)} 个良好匹配点")
+        #     logD(f"ORB找到 {len(good_matches)} 个良好匹配点")
             
-            # 如果找到足够的好匹配点，处理匹配结果
-            min_match_count = 10
-            if len(good_matches) >= min_match_count:
-                return process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
-                                      template_path, screenshot_path, timestamp, save_dir, "ORB")
-            else:
-                logW("ORB匹配点不足，无法找到目标")
-                return False
-        except Exception as e:
-            logE(f"ORB特征检测失败: {str(e)}")
-            return False
+        #     # 如果找到足够的好匹配点，处理匹配结果
+        #     min_match_count = 10
+        #     if len(good_matches) >= min_match_count:
+        #         return process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+        #                               template_path, screenshot_path, timestamp, save_dir, "ORB")
+        #     else:
+        #         logW("ORB匹配点不足，无法找到目标")
+        #         return False
+        # except Exception as e:
+        #     logE(f"ORB特征检测失败: {str(e)}")
+        #     return False
             
     except Exception as e:
         logEX(f"模板匹配过程中发生错误: {str(e)}")
@@ -689,6 +714,44 @@ def process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, templa
         
         # 获取目标边界框的四个角点坐标
         points = np.int32(dst).reshape(4, 2)
+
+        # 切换到Blender窗口
+        if not activate_window("Blender"):
+            raise Exception("无法切换到Blender窗口")
+        time.sleep(1)
+        
+        import pyautogui
+
+        # 切换到编辑模式
+        logD("正在切换到Blender的编辑模式...")
+        pyautogui.moveTo(center_x, center_y, duration=0.3)
+        pyautogui.press('tab')
+        time.sleep(0.5)
+
+        # 切换到透视模式
+        pyautogui.hotkey('alt', 'z')
+        time.sleep(0.5)
+        
+        # 根据匹配结果框选目标物体
+        logD("正在框选目标物体...")
+        
+        # 计算最小外接矩形
+        min_x = int(min(dst[:,0,0]))
+        min_y = int(min(dst[:,0,1]))
+        max_x = int(max(dst[:,0,0]))
+        max_y = int(max(dst[:,0,1]))
+        
+        # 模拟鼠标框选操作：从左上角到右下角
+        pyautogui.moveTo(min_x, min_y, duration=0.3)
+        pyautogui.mouseDown()
+        pyautogui.moveTo(max_x, max_y, duration=0.5)
+        pyautogui.mouseUp()
+        time.sleep(0.5)
+        
+        logI("已完成目标物体的框选操作")
+
+        pyautogui.hotkey('shift', 'ctrl', 'd')
+        time.sleep(0.5)
         
         # 返回匹配结果
         return {
@@ -749,6 +812,22 @@ def clear_processes():
     except Exception as e:
         logW(f"关闭进程时发生错误: {str(e)}")
 
+def remove_chinese_chars(text):
+    """
+    去除字符串中的所有中文字符
+    参数:
+        text: 输入字符串
+    返回:
+        去除中文字符后的字符串
+    实现原理:
+        1. 使用正则表达式匹配所有Unicode中文字符范围
+        2. 将这些字符替换为空字符串
+    """
+    import re
+    # 匹配所有中文字符的正则表达式
+    # 包括基本汉字(4E00-9FFF)、扩展A区(3400-4DBF)、扩展B区(20000-2A6DF)等
+    pattern = re.compile('[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df\U0002a700-\U0002b73f\U0002b740-\U0002b81f\U0002b820-\U0002ceaf]')
+    return pattern.sub('', text)
 
 if __name__ == "__main__":
     # 设置建筑地址
@@ -756,7 +835,8 @@ if __name__ == "__main__":
     
     # 从配置文件获取地址
     address = get_setting('address')
-    filename = address.replace(' ', '_')
+    filename = remove_chinese_chars(address.replace(' ', '_').replace(",", ""))
+    logI(f"filename: {filename}")
     rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
     clear_processes()
     
@@ -781,16 +861,17 @@ if __name__ == "__main__":
 
                 time.sleep(1)
                 if not check_rdc_file_exists(rdc_fname):
-                    clear_processes()
+                    # clear_processes()
                     raise RuntimeError("未找到RDC文件，无法继续处理")
+        
+        # 打开Blender, 导入rdc文件
+        open_blender()
 
-        # 打开Blender
-        if open_blender():
-            # 匹配模板
-            match_template()
+        # 匹配模板
+        match_template(filename)
 
         # 清理进程
-        clear_processes()
+        # clear_processes()
         
     except Exception as e:
         logEX(f"错误: {str(e)}")

@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-05-06
 LastEditors: Leili
-LastEditTime: 2025-05-06
+LastEditTime: 2025-05-19 16:25:09
 FilePath: /GoogleModelProcess/Scripts/config_utils.py
 Description: 配置文件读取工具
 '''
@@ -58,6 +58,45 @@ def get_setting(setting_name, fallback=None):
     """
     config = load_config()
     return config.get('Settings', setting_name, fallback=fallback)
+
+def set_setting(setting_name, value):
+    """
+    设置配置项的值
+    
+    功能:
+        1. 修改或添加Settings节中的配置项
+        2. 自动保存修改后的配置文件
+    
+    参数:
+        setting_name: str - 要设置的配置项名称
+        value: str - 要设置的配置值
+    
+    返回:
+        bool: 设置是否成功
+    
+    异常:
+        configparser.Error: 当配置文件操作失败时抛出
+        IOError: 当文件写入失败时抛出
+    """
+    try:
+        config = load_config()
+        
+        # 确保Settings节存在
+        if not config.has_section('Settings'):
+            config.add_section('Settings')
+            
+        # 设置配置项
+        config.set('Settings', setting_name, str(value))
+        
+        # 保存修改
+        with open(get_config_path(), 'w', encoding='utf-8') as configfile:
+            config.write(configfile)
+            
+        return True
+        
+    except (configparser.Error, IOError) as e:
+        print(f"设置配置项失败: {str(e)}")
+        return False
 
 def get_log_level():
     """获取日志级别配置"""

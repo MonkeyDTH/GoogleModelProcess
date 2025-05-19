@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-19 14:55:40
+LastEditTime: 2025-05-19 16:23:25
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''

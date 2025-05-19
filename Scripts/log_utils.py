@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-05-06
 LastEditors: Leili
-LastEditTime: 2025-05-19 14:38:43
+LastEditTime: 2025-05-19 16:56:09
 FilePath: /GoogleModelProcess/Scripts/log_utils.py
 Description: 日志工具模块，提供统一的日志记录功能
 '''
@@ -24,7 +24,7 @@ LOG_LEVELS = {
 # 全局日志记录器
 logger = None
 
-def setup_logger(log_level='info', log_dir=None, log_file=None, b_print_info=True):
+def setup_logger(log_level='info', log_dir=None, log_file=None, b_print_info=False):
     """
     设置日志记录器
     

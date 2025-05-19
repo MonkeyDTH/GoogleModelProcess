@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-19 14:56:21
+LastEditTime: 2025-05-19 17:25:00
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 抓取Google地图模型全流程
 '''
@@ -20,7 +20,7 @@ if project_dir not in sys.path:
     sys.path.append(project_dir)
 
 # 导入配置工具和日志工具
-from Scripts.config_utils import get_api_key, get_path, get_setting, get_log_level, get_log_dir
+from Scripts.config_utils import get_api_key, get_path, get_setting, get_log_level, get_log_dir, set_setting
 from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
 from Scripts.utils import remove_chinese_chars, get_filename
 
@@ -391,7 +391,7 @@ def capture_frame(filename=None):
         logE(f"截取帧时发生错误: {str(e)}")
         return False
 
-def check_rdc_file_exists(rdc_file_path=None):
+def check_rdc_file(rdc_file_path=None):
     """
     检查RDC文件是否存在
     
@@ -403,7 +403,20 @@ def check_rdc_file_exists(rdc_file_path=None):
     """
     # 检查文件是否存在
     if os.path.exists(rdc_file_path):
-        logI(f"找到RDC文件: {rdc_file_path}")
+        logD(f"找到RDC文件: {rdc_file_path}")
+
+        # 检查RDC文件大小
+        rdc_size = os.path.getsize(rdc_file_path)
+        min_size = int(get_setting('rdc_file_min_size', 1)) * 1024 * 1024  # 默认最小1MB
+        
+        if rdc_size < min_size:
+            logE(f"RDC文件大小过小 ({rdc_size / 1024 / 1024:.2f} MB < {int(get_setting('rdc_file_min_size', 1)):.2f} MB)，可能捕获失败")
+            # 删除过小的RDC文件
+            os.remove(rdc_file_path)
+            clear_processes()
+            return False
+        
+        logI(f"RDC文件大小正常: {rdc_size / 1024 / 1024:.2f} MB")
         return True
     else:
         logW(f"未找到RDC文件: {rdc_file_path}")
@@ -505,7 +518,7 @@ def match_template(filename:str):
             return False
             
         # 截取当前屏幕
-        print("正在截取当前屏幕...")
+        logD("正在截取当前屏幕...")
         screenshot = pyautogui.screenshot()
         
         # 创建保存截图的目录
@@ -807,18 +820,68 @@ def terminate_processes(process_names):
         logW(f"关闭进程时发生错误: {str(e)}")
         return False
 
+def remove_dir(directory):
+    """ 移除整个目录 """
+    import shutil
+    if os.path.exists(directory):
+        shutil.rmtree(directory)
+
+def remove_subdirs_keep_files(directory):
+    """
+    删除指定目录下的所有子目录但保留文件
+    
+    参数:
+        directory: str - 要处理的目录路径
+    
+    返回:
+        bool: 操作是否成功
+    
+    异常:
+        OSError: 当目录操作失败时抛出
+    """
+    
+    try:
+        # 检查目录是否存在
+        if not os.path.exists(directory):
+            return False
+            
+        # 遍历目录下的所有项
+        for item in os.listdir(directory):
+            item_path = os.path.join(directory, item)
+            
+            # 如果是目录则删除
+            if os.path.isdir(item_path):
+                remove_dir(item_path)
+                logD(f"已删除子目录: {item_path}")
+            # 文件则保留
+            else:
+                logD(f"保留文件: {item_path}")
+                
+        return True
+        
+    except OSError as e:
+        logE(f"删除目录文件失败: {str(e)}")
+        return False
+
 def clear_processes():
     """
     清理所有相关进程
     """
+    import shutil
     try:
-        # 终止Chrome和RenderDoc进程
+        # 终止Chrome, RenderDoc和Blender进程
         process_names = {
             'chrome.exe': False,    # 精确匹配
             'renderdoc': True,      # 部分匹配
             'Blender': True         # 部分匹配
         }
         terminate_processes(process_names)
+
+        # 清除缓存文件
+        remove_subdirs_keep_files(get_path("rdc_dir"))
+        remove_dir(os.path.join(os.getcwd(), "screenshots"))
+        remove_dir(os.path.join(os.getcwd(), "signal"))
+
         return True
     except Exception as e:
         logW(f"关闭进程时发生错误: {str(e)}")
@@ -845,59 +908,134 @@ def wait_for_blender_save_signal():
     logD("接收到Blender保存完成信号")
     return True
 
+def get_addresses():
+    """
+    从配置文件中指定的地址文件逐行读取地址列表
+    
+    返回:
+        list: 包含所有地址的列表，如果文件不存在或读取失败则返回空列表
+    
+    异常:
+        IOError: 当文件读取失败时抛出
+    """
+    try:
+        address_file = get_path('address_path')
+        if not os.path.exists(address_file):
+            logE(f"地址文件不存在: {address_file}")
+            return []
+            
+        with open(address_file, 'r', encoding='utf-8') as f:
+            addresses = [line.strip() for line in f if line.strip()]
+            logI(f"从文件 {address_file} 成功读取 {len(addresses)} 个地址")
+            return addresses
+            
+    except Exception as e:
+        logEX(f"读取地址文件时发生错误: {str(e)}")
+        return []
+
+def process_single_address(address):
+    """
+    抓取单个地址的模型, 内部不处理异常，请在外部try
+    
+    参数:
+        address: 要处理的地址字符串
+    """
+    
+    start_time = time.time()
+
+    filename = get_filename(address)
+    rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
+    result_fname = os.path.join(get_path('result_dir'), f"{filename}.blend")
+
+    if os.path.exists(result_fname):
+        logI(f"已存在结果文件: {result_fname}")
+        return True
+
+    clear_processes()
+    if not os.path.exists(rdc_fname):
+        ## 不存在之前的结果，则执行抓取
+        # 获取经纬度
+        lat, lng = get_coordinates_from_google(address, API_KEY)
+        logI(f"地址: '{address}', 经纬度: ({lat}, {lng})")
+        
+        # 执行启动并获取进程ID
+        chrome_pids = launch_chrome_google_map(lat, lng)
+        # 启动RenderDoc
+        if not launch_renderdoc_and_inject():
+            raise RuntimeError("启动RenderDoc或注入失败")
+        # 截取帧
+        if os.path.exists(rdc_fname):
+            os.remove(rdc_fname)
+        capture_frame(filename)
+
+        time.sleep(1)
+        if not check_rdc_file(rdc_fname):
+            clear_processes()
+            raise RuntimeError("RDC文件存在问题，无法继续处理")
+    elif not check_rdc_file(rdc_fname):
+        # 已存在的rdc结果不符合要求，TODO:重新抓取
+        clear_processes()
+        raise RuntimeError("RDC文件存在问题，无法继续处理")
+    else:
+        logI(f"rdc文件已存在，无需再次截取帧")
+
+    # 检查匹配的模板(顶视图)是否存在
+    template_dir = get_path('template_image_dir')
+    template_path = os.path.join(template_dir, f"{filename}.png")
+    if not os.path.exists(template_path):
+        logE(f"未找到模板图片: {template_path}")
+        clear_processes()
+        return False
+    
+    set_setting("address", address)
+    # 打开Blender, 导入rdc文件
+    open_blender()
+
+    # 匹配模板
+    match_template(filename)
+
+    # 等待Blender保存完成
+    if not wait_for_blender_save_signal():
+        logE("等待Blender保存信号超时")
+        clear_processes()
+        return False
+    
+    total_time = time.time() - start_time
+    minutes, seconds = divmod(total_time, 60)
+    
+    logI(f"脚本执行完毕, 抓取模型地址: {address}")
+    logI(f"总运行时间: {int(minutes)}分{int(seconds)}秒")
+    return True
+
 def main():
     """
     主函数 - 执行完整的Google地图模型抓取流程
     """
 
-    clear_processes()
-
-    address = get_setting("address")
+    addresses = get_addresses()
+    if not addresses:
+        logE("未找到有效地址，请检查address_path配置")
+        return False
+    logI("-"*40)
     
-    try:
-        filename = get_filename(address)
-        rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
-        if not os.path.exists(rdc_fname):
-            ## 不存在之前的结果，则执行抓取
-            b_capture = True
-            if b_capture:
-                # 获取经纬度
-                lat, lng = get_coordinates_from_google(address, API_KEY)
-                logI(f"地址: {address}, 经纬度: ({lat}, {lng})")
+    for index, address in enumerate(addresses):
+        try:
+            # 原处理单个地址的逻辑
+            logI(f"开始抓取第{index+1}个模型，地址: '{address}'")
+            if not process_single_address(address):
+                logW(f"地址处理失败: {address}")
+            logI("-"*40)
                 
-                # 执行启动并获取进程ID
-                chrome_pids = launch_chrome_google_map(lat, lng)
-                # 启动RenderDoc
-                if not launch_renderdoc_and_inject():
-                    raise RuntimeError("启动RenderDoc或注入失败")
-                # 截取帧
-                if os.path.exists(rdc_fname):
-                    os.remove(rdc_fname)
-                capture_frame(filename)
+        except Exception as e:
+            logEX(f"处理地址 {address} 时发生错误: {str(e)}")
+            continue
+    
+    # 执行清理操作
+    if not clear_processes():
+        logE("清理进程时发生错误")
+        return False
 
-                time.sleep(1)
-                if not check_rdc_file_exists(rdc_fname):
-                    clear_processes()
-                    raise RuntimeError("未找到RDC文件，无法继续处理")
-        
-        # 打开Blender, 导入rdc文件
-        open_blender()
-
-        # 匹配模板
-        match_template(filename)
-
-        # 等待Blender保存完成
-        if not wait_for_blender_save_signal():
-            exit("等待Blender保存信号超时")
-        
-        # 执行清理操作
-        if not clear_processes():
-            exit("清理进程时发生错误")
-        
-        logI(f"脚本执行完毕, 抓取模型地址: {address}")
-        
-    except Exception as e:
-        logEX(f"错误: {str(e)}")
+    return True
 
 
 if __name__ == "__main__":
@@ -911,8 +1049,7 @@ if __name__ == "__main__":
 
     main()
 
-    end_time = time.time()
-    total_time = end_time - start_time
+    total_time = time.time() - start_time
     minutes, seconds = divmod(total_time, 60)
 
     # 输出统计信息
@@ -921,3 +1058,5 @@ if __name__ == "__main__":
     logI(f"总运行时间: {int(minutes)}分{int(seconds)}秒")
     logI(f"结束时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     logI("="*50)
+    logI(" ")
+    logI(" ")

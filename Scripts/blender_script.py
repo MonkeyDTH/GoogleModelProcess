@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-19 11:14:43
+LastEditTime: 2025-05-19 14:55:40
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
@@ -21,34 +21,19 @@ if project_dir not in sys.path:
 # 导入配置工具和日志工具
 from Scripts.config_utils import get_path, get_log_level, get_log_dir, get_setting
 from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
+from Scripts.utils import remove_chinese_chars, get_filename
 
 # 初始化日志系统
-logger = setup_logger(log_level=get_log_level(), log_dir=get_log_dir())
+logger = setup_logger(log_level=get_log_level(), log_dir=get_log_dir(), b_print_info=False)
 
-def remove_chinese_chars(text):
-    """
-    去除字符串中的所有中文字符
-    参数:
-        text: 输入字符串
-    返回:
-        去除中文字符后的字符串
-    实现原理:
-        1. 使用正则表达式匹配所有Unicode中文字符范围
-        2. 将这些字符替换为空字符串
-    """
-    import re
-    # 匹配所有中文字符的正则表达式
-    # 包括基本汉字(4E00-9FFF)、扩展A区(3400-4DBF)、扩展B区(20000-2A6DF)等
-    pattern = re.compile('[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df\U0002a700-\U0002b73f\U0002b740-\U0002b81f\U0002b820-\U0002ceaf]')
-    return pattern.sub('', text)
+# 从配置中获取文件名
+filename = get_filename(get_setting("address"))
 
 def import_rdc():
     """
     导入RenderDoc文件
     """
 
-    address = get_setting('address')
-    filename = remove_chinese_chars(address.replace(' ', '_').replace(",", ""))
     rdc_path = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
     # 检查文件是否存在
     if not os.path.exists(rdc_path):
@@ -56,10 +41,10 @@ def import_rdc():
         return False
         
     # 导入RenderDoc文件
-    logI(f"正在导入RenderDoc文件: {rdc_path}")
+    logD(f"正在导入RenderDoc文件: {rdc_path}")
     try:
         bpy.ops.import_rdc.google_maps(filepath=(rdc_path), filter_glob=".rdc", max_blocks=-1)
-        logI("已成功导入RenderDoc文件")
+        logI(f"已成功导入RenderDoc文件: {rdc_path}")
             
     except AttributeError as e:
         logE(f"错误: 无法找到RenderDoc导入操作: {str(e)}")
@@ -81,7 +66,7 @@ def set_shading_mode():
                     if space.type == 'VIEW_3D':
                         try:
                             space.shading.type = 'MATERIAL'
-                            logI("已直接设置Material Preview着色模式")
+                            logD("已直接设置Material Preview着色模式")
                             break
                         except Exception as e:
                             logW(f"直接设置着色模式失败: {str(e)}")
@@ -91,21 +76,52 @@ def set_shading_mode():
 
 def save_blender_project():
     """
-    保存Blender项目
+    保存Blender项目文件
+    返回:
+        bool: 保存是否成功
     """
     try:
         # 设置保存目录
-        save_dir = get_path("blender_project_dir")
+        save_dir = get_path("result_dir")
         
         # 检查目录是否存在，如果不存在则创建
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-            logI(f"已创建保存目录: {save_dir}")
+            logD(f"已创建保存目录: {save_dir}")
         
         # 设置自动打包外部资源
-        logI("设置自动打包外部资源...")
+        logD("设置自动打包外部资源...")
         # 启用自动打包
         bpy.data.use_autopack = True
+
+        # # 处理所有纹理路径问题 —— 使用后没有实质效果，暂时不用
+        # logI("开始处理纹理路径问题...")
+        # for img in bpy.data.images:
+        #     if img.filepath and not img.packed_file:
+        #         try:
+        #             # 修正路径 - 将C:\rdc重定向到实际项目目录
+        #             wrong_prefix = "C:\\rdc\\"
+        #             correct_prefix = os.path.join(project_dir, "rdc\\")
+                    
+        #             if img.filepath.startswith(wrong_prefix):
+        #                 # 处理绝对路径情况
+        #                 corrected_path = img.filepath.replace(wrong_prefix, correct_prefix)
+        #                 img.filepath = corrected_path
+        #                 logD(f"已修正纹理路径: {img.filepath}")
+        #             elif img.filepath.startswith("//rdc\\"):
+        #                 # 处理相对路径情况
+        #                 corrected_path = os.path.join(project_dir, img.filepath[2:])
+        #                 img.filepath = corrected_path
+        #                 logD(f"已修正相对纹理路径: {img.filepath}")
+
+        #             # 打包纹理资源
+        #             img.pack()
+        #             logI(f"已成功打包纹理: {img.name}")
+                    
+        #         except Exception as e:
+        #             logEX(f"处理纹理 {img.name} 时发生严重错误: {str(e)}")
+        #             logEX(f"纹理路径: {img.filepath}")
+        #             continue
         
         # 手动打包所有外部资源
         try:
@@ -119,13 +135,15 @@ def save_blender_project():
         try:
             # 设置打包选项
             bpy.context.preferences.filepaths.use_file_compression = True
-            logI("已启用文件压缩")
+            logD("已启用文件压缩")
         except Exception as e:
             logW(f"设置文件压缩选项时发生错误: {str(e)}")
         
         # 生成当前时间作为文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        blend_file_path = os.path.join(save_dir, f"blender_project_{timestamp}.blend")
+        # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # blend_file_path = os.path.join(save_dir, f"{filename}_{timestamp}.blend")
+        # 不带时间戳
+        blend_file_path = os.path.join(save_dir, f"{filename}.blend")
         
         # 保存Blender项目
         bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, compress=True, relative_remap=True)
@@ -135,8 +153,16 @@ def save_blender_project():
         time.sleep(2)
         
         # 保存完成后自动退出Blender
-        logI("保存完成，准备退出Blender...")
+        logD("保存完成，准备退出Blender...")
         bpy.ops.wm.quit_blender()
+        
+        # 保存完成后创建信号文件
+        signal_file = os.path.join(project_dir, "signal", "blender_save_done.signal")
+        with open(signal_file, 'w') as f:
+            f.write("1")
+        logD("Blender项目保存完成，已创建信号文件")
+        
+        return True
         
     except Exception as e:
         logEX(f"保存Blender项目时发生错误: {str(e)}")
@@ -192,8 +218,8 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
         return None
     
     # 统计合并前的网格数量
-    print("合并前:")
-    initial_count, initial_meshes = count_meshes()
+    # print("合并前:")
+    # initial_count, initial_meshes = count_meshes()
     
     # 确保所有对象都被选中
     bpy.ops.object.select_all(action='DESELECT')
@@ -212,13 +238,13 @@ def merge_all_meshes(merged_name="Combined_Mesh"):
     bpy.context.view_layer.objects.active.name = merged_name
     
     # 统计合并后的网格数量
-    print("\n合并后:")
-    final_count, final_meshes = count_meshes()
+    # print("\n合并后:")
+    # final_count, final_meshes = count_meshes()
     
-    # 输出统计结果
-    print(f"\n合并统计:")
-    print(f"初始网格数量: {initial_count}")
-    print(f"最终网格数量: {final_count}")
+    # # 输出统计结果
+    # print(f"\n合并统计:")
+    # print(f"初始网格数量: {initial_count}")
+    # print(f"最终网格数量: {final_count}")
     
     return bpy.context.view_layer.objects.active
 
@@ -231,14 +257,13 @@ def center_mesh_origin(mesh_object=None):
         if bpy.context.selected_objects:
             mesh_object = bpy.context.selected_objects[0]
         else:
-            print("没有选中任何对象，请先选择一个网格对象")
+            logW("没有选中任何对象，请先选择一个网格对象")
             return
 
     if mesh_object.type != 'MESH':
-        print(f"选中的对象 '{mesh_object.name}' 不是网格类型")
+        logW(f"选中的对象 '{mesh_object.name}' 不是网格类型")
         return
 
-    print(f"正在将网格 '{mesh_object.name}' 的XY中心移动到原点...")
     # 确保在对象模式下
     bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -279,100 +304,82 @@ def center_mesh_origin(mesh_object=None):
     # 将对象自身的位置重置到原点（因为顶点已经移动了）
     mesh_object.location = (0.0, 0.0, 0.0)
 
-    print(f"网格 '{mesh_object.name}' 已完成居中")
+    logD(f"网格 '{mesh_object.name}' 已完成居中")
 
-def export_mesh():
-    """
-    导出当前选中的Mesh为FBX文件
-    """
-    try:
-        # 获取当前时间戳
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # 创建导出目录
-        export_dir = os.path.join(project_dir, "exports")
-        if not os.path.exists(export_dir):
-            os.makedirs(export_dir)
-        
-        # 设置导出文件路径
-        export_path = os.path.join(export_dir, f"mesh_export_{timestamp}.fbx")
-        
-        # 确保选中了要导出的对象
-        if not bpy.context.selected_objects:
-            print("错误：没有选中任何对象")
-            return False
-            
-        # 设置导出选项
-        bpy.ops.export_scene.fbx(
-            filepath=export_path,
-            use_selection=True,
-            global_scale=1.0,
-            apply_unit_scale=True,
-            apply_scale_options='FBX_SCALE_NONE',
-            bake_space_transform=False,
-            object_types={'MESH'},
-            use_mesh_modifiers=True,
-            mesh_smooth_type='OFF',
-            use_mesh_edges=False,
-            use_tspace=False,
-            use_custom_props=False,
-            add_leaf_bones=False,
-            primary_bone_axis='Y',
-            secondary_bone_axis='X',
-            use_armature_deform_only=False,
-            bake_anim=False,
-            path_mode='AUTO'
-        )
-        
-        print(f"已将Mesh导出至: {export_path}")
-        return True
-        
-    except Exception as e:
-        print(f"导出Mesh时发生错误: {str(e)}")
-        return False
+def remove_unselected_vertices():
+    """删除当前网格中所有未被选中的顶点"""
+    import bmesh
 
-def check_export_signal():
+    # 获取当前活动对象
+    obj = bpy.context.active_object
+    if obj is None or obj.type != 'MESH':
+        print("请先选择一个网格对象")
+        return
+    
+    # 确保在编辑模式下
+    if obj.mode != 'EDIT':
+        print("请在编辑模式下使用此功能")
+        return
+    
+    # 创建bmesh对象
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    
+    # 收集未选中的顶点
+    verts_to_remove = [v for v in bm.verts if not v.select]
+    
+    if not verts_to_remove:
+        print("没有找到未选中的顶点")
+        return
+    
+    # 删除未选中的顶点
+    bmesh.ops.delete(bm, geom=verts_to_remove, context='VERTS')
+    
+    # 更新网格
+    bmesh.update_edit_mesh(obj.data)
+    
+    print(f"已删除 {len(verts_to_remove)} 个未选中的顶点")
+
+def check_save_signal():
     """
-    检查是否存在导出信号文件
+    检查模板匹配完成信号，并在检测到信号后执行保存操作
+    返回:
+        float: 下次检查的时间间隔(秒)，如果返回None则停止定时器
     """
-    signal_file = os.path.join(project_dir, "export_mesh.signal")
+    signal_file = os.path.join(project_dir, "signal", "template_match_done.signal")
+    
     if os.path.exists(signal_file):
         try:
-            # 先移除信号文件，防止重复导出
+            # 删除信号文件
             os.remove(signal_file)
+            logD("检测到模板匹配完成信号")
+
+            # 删除未选中的顶点
+            remove_unselected_vertices()
             
-            logI("检测到导出信号，开始导出Mesh...")
-            if export_mesh():
-                # 导出成功后保存Blender项目
-                logI("开始保存Blender项目...")
-                save_blender_project()
-                
-                # 创建导出完成信号
-                done_file = os.path.join(project_dir, "export_done.signal")
-                with open(done_file, 'w') as f:
-                    f.write(str(datetime.now()))
-                logI("导出和保存完成")
-            else:
-                logE("导出失败")
-                # 如果导出失败，重新创建信号文件以便重试
-                with open(signal_file, 'w') as f:
-                    f.write(str(datetime.now()))
+            # 执行保存操作
+            save_blender_project()
+            return None  # 停止定时器
+            
         except Exception as e:
-            logEX(f"处理导出信号时发生错误: {str(e)}")
-            # 发生错误时也重新创建信号文件
-            try:
-                with open(signal_file, 'w') as f:
-                    f.write(str(datetime.now()))
-            except:
-                pass
-    return 1.0  # 返回1秒后再次执行
+            logEX(f"处理模板匹配信号时出错: {str(e)}")
+            return 1.0  # 5秒后重试
+    
+    # 如果信号文件不存在，5秒后再次检查
+    return 1.0
 
 def register_timer():
     """
-    注册定时器来检查导出信号
+    注册定时器来检查模板匹配完成信号
     """
-    bpy.app.timers.register(check_export_signal)
-    logI("已注册导出信号检查定时器")
+    # 取消已存在的定时器
+    if hasattr(bpy.app.timers, 'is_registered') and bpy.app.timers.is_registered(check_save_signal):
+        bpy.app.timers.unregister(check_save_signal)
+    
+    # 注册新定时器
+    bpy.app.timers.register(check_save_signal)
+    logD("已注册模板匹配信号检查定时器，间隔1秒")
+
 
 def main():
     """
@@ -384,7 +391,7 @@ def main():
         # 删除场景中的所有物体
         bpy.ops.object.select_all(action='SELECT')
         bpy.ops.object.delete()
-        logI("已删除场景中的所有物体")
+        logD("已删除场景中的所有物体")
         
         # 导入rdc文件
         ret = import_rdc()
@@ -401,31 +408,15 @@ def main():
         # 合并所有网格
         merged_mesh = merge_all_meshes()
         if merged_mesh:
-            logI(f"所有网格已成功合并为: {merged_mesh.name}")
+            logD(f"所有网格已成功合并为: {merged_mesh.name}")
             # 合并后居中
             center_mesh_origin(merged_mesh)
         else:
             logE("合并操作失败")
-
-        # 设置自动打包外部资源
-        logI("设置自动打包外部资源...")
-        try:
-            # 启用自动打包
-            bpy.data.use_autopack = True
-            # 手动打包所有外部资源
-            bpy.ops.file.pack_all()
-            logI("已成功打包所有外部资源")
-            
-            # 设置文件压缩选项
-            bpy.context.preferences.filepaths.use_file_compression = True
-            logI("已启用文件压缩")
-        except Exception as e:
-            logW(f"设置自动打包资源时发生错误: {str(e)}")
-        
-        logI("Blender内部脚本执行完成")
         
         # 创建信号文件表示脚本执行完成
-        signal_file = os.path.join(project_dir, "blender_script_done.signal")
+        os.makedirs(os.path.join(project_dir, "signal"), exist_ok=True)
+        signal_file = os.path.join(project_dir, "signal", "blender_script_done.signal")
         with open(signal_file, 'w') as f:
             f.write(str(datetime.now()))
             

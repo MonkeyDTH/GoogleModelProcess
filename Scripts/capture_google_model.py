@@ -2,9 +2,9 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-19 11:15:21
+LastEditTime: 2025-05-19 14:56:21
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
-Description: 
+Description: 抓取Google地图模型全流程
 '''
 import os
 import subprocess
@@ -22,6 +22,7 @@ if project_dir not in sys.path:
 # 导入配置工具和日志工具
 from Scripts.config_utils import get_api_key, get_path, get_setting, get_log_level, get_log_dir
 from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
+from Scripts.utils import remove_chinese_chars, get_filename
 
 # 初始化日志系统
 logger = setup_logger(log_level=get_log_level(), log_dir=get_log_dir())
@@ -191,7 +192,7 @@ def launch_renderdoc_and_inject():
             Timings.exists_timeout = 30
             
             # 尝试多次连接到RenderDoc窗口
-            max_retries = 3
+            max_retries = 5
             for attempt in range(max_retries):
                 try:
                     logI(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
@@ -219,8 +220,8 @@ def launch_renderdoc_and_inject():
                     break
                 except Exception as e:
                     if attempt < max_retries - 1:
-                        logW(f"连接失败: {str(e)}，等待5秒后重试...")
-                        time.sleep(5)
+                        logW(f"连接失败: {str(e)}，等待1秒后重试...")
+                        time.sleep(1)
                     else:
                         raise Exception("无法连接到RenderDoc窗口，请确保程序已正确启动")
             
@@ -446,7 +447,7 @@ def open_blender():
             print(f"已启动Blender进程，PID: {process.pid}")
             
             # 等待Blender启动和脚本执行完成
-            signal_file = os.path.join(project_dir, "blender_script_done.signal")
+            signal_file = os.path.join(project_dir, "signal", "blender_script_done.signal")
             
             # 如果存在旧的信号文件，先删除
             if os.path.exists(signal_file):
@@ -560,12 +561,22 @@ def match_template(filename:str):
             print(f"SIFT找到 {len(good_matches)} 个良好匹配点")
             
             # 如果找到足够的好匹配点，处理匹配结果
-            min_match_count = 10
+            min_match_count = int(get_setting("min_match_count"))
             if len(good_matches) >= min_match_count:
-                process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+                ret = process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
                                       template_path, screenshot_path, timestamp, save_dir, "SIFT")
+                
+                # 创建完成信号文件
+                if ret:
+                    signal_file = os.path.join(project_dir, "signal", "template_match_done.signal")
+                    with open(signal_file, 'w') as f:
+                        f.write("1")
+                    logI("模板匹配完成，已创建信号文件")
+                    return True
+                return False
             else:
-                print("SIFT匹配点不足，尝试使用ORB特征检测器...")
+                # print("SIFT匹配点不足，尝试使用ORB特征检测器...")
+                logW("SIFT匹配点不足...")
         except Exception as e:
             print(f"SIFT特征检测失败: {str(e)}，尝试使用ORB特征检测器...")
         
@@ -798,9 +809,8 @@ def terminate_processes(process_names):
 
 def clear_processes():
     """
-    关闭所有相关进程: Chrome, RenderDoc, Blender
+    清理所有相关进程
     """
-    terminate_processes({'chrome.exe': False, 'renderdoc': True})
     try:
         # 终止Chrome和RenderDoc进程
         process_names = {
@@ -809,38 +819,44 @@ def clear_processes():
             'Blender': True         # 部分匹配
         }
         terminate_processes(process_names)
+        return True
     except Exception as e:
         logW(f"关闭进程时发生错误: {str(e)}")
+        return False
 
-def remove_chinese_chars(text):
+def wait_for_blender_save_signal():
     """
-    去除字符串中的所有中文字符
-    参数:
-        text: 输入字符串
+    等待Blender保存完成信号
     返回:
-        去除中文字符后的字符串
-    实现原理:
-        1. 使用正则表达式匹配所有Unicode中文字符范围
-        2. 将这些字符替换为空字符串
+        bool: 是否成功接收到信号
     """
-    import re
-    # 匹配所有中文字符的正则表达式
-    # 包括基本汉字(4E00-9FFF)、扩展A区(3400-4DBF)、扩展B区(20000-2A6DF)等
-    pattern = re.compile('[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df\U0002a700-\U0002b73f\U0002b740-\U0002b81f\U0002b820-\U0002ceaf]')
-    return pattern.sub('', text)
-
-if __name__ == "__main__":
-    # 设置建筑地址
-    # address = "10912 Yukon Ave S"
+    signal_file = os.path.join(project_dir, "signal", "blender_save_done.signal")
+    max_wait_time = 300  # 最长等待5分钟
+    start_time = time.time()
     
-    # 从配置文件获取地址
-    address = get_setting('address')
-    filename = remove_chinese_chars(address.replace(' ', '_').replace(",", ""))
-    logI(f"filename: {filename}")
-    rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
+    while not os.path.exists(signal_file):
+        if time.time() - start_time > max_wait_time:
+            logW("等待Blender保存信号超时")
+            return False
+        time.sleep(5)
+    
+    # 删除信号文件
+    os.remove(signal_file)
+    logD("接收到Blender保存完成信号")
+    return True
+
+def main():
+    """
+    主函数 - 执行完整的Google地图模型抓取流程
+    """
+
     clear_processes()
+
+    address = get_setting("address")
     
     try:
+        filename = get_filename(address)
+        rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
         if not os.path.exists(rdc_fname):
             ## 不存在之前的结果，则执行抓取
             b_capture = True
@@ -861,7 +877,7 @@ if __name__ == "__main__":
 
                 time.sleep(1)
                 if not check_rdc_file_exists(rdc_fname):
-                    # clear_processes()
+                    clear_processes()
                     raise RuntimeError("未找到RDC文件，无法继续处理")
         
         # 打开Blender, 导入rdc文件
@@ -870,9 +886,38 @@ if __name__ == "__main__":
         # 匹配模板
         match_template(filename)
 
-        # 清理进程
-        # clear_processes()
+        # 等待Blender保存完成
+        if not wait_for_blender_save_signal():
+            exit("等待Blender保存信号超时")
+        
+        # 执行清理操作
+        if not clear_processes():
+            exit("清理进程时发生错误")
+        
+        logI(f"脚本执行完毕, 抓取模型地址: {address}")
         
     except Exception as e:
         logEX(f"错误: {str(e)}")
-        
+
+
+if __name__ == "__main__":
+
+    start_time = time.time()
+    # 输出版本信息
+    logI("="*50)
+    logI("Google地图模型抓取工具 v1.0.0")
+    logI(f"开始时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logI("="*50)
+
+    main()
+
+    end_time = time.time()
+    total_time = end_time - start_time
+    minutes, seconds = divmod(total_time, 60)
+
+    # 输出统计信息
+    logI("="*50)
+    logI(f"流程执行完成!")
+    logI(f"总运行时间: {int(minutes)}分{int(seconds)}秒")
+    logI(f"结束时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logI("="*50)

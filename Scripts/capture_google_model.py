@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-05-19 17:25:00
+LastEditTime: 2025-06-06 18:25:29
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 抓取Google地图模型全流程
 '''
@@ -492,7 +492,7 @@ def open_blender():
         logEX(f"运行Blender时发生错误: {str(e)}")
         return False
 
-def match_template(filename:str):
+def match_template(template_path:str):
     """
     使用特征点匹配方法查找图像中的目标
     """
@@ -504,14 +504,9 @@ def match_template(filename:str):
         
         # 导入必要的库
         import cv2
-        import numpy as np
         import pyautogui
         import os
         from datetime import datetime
-        
-        # 从配置文件获取模板图片路径
-        template_dir = get_path('template_image_dir')
-        template_path = os.path.join(template_dir, f"{filename}.png")
         
         if not os.path.exists(template_path):
             print(f"未找到模板图片: {template_path}")
@@ -908,7 +903,7 @@ def wait_for_blender_save_signal():
     logD("接收到Blender保存完成信号")
     return True
 
-def get_addresses():
+def get_addresses(address_file):
     """
     从配置文件中指定的地址文件逐行读取地址列表
     
@@ -919,21 +914,21 @@ def get_addresses():
         IOError: 当文件读取失败时抛出
     """
     try:
-        address_file = get_path('address_path')
+        # address_file = get_path('address_path')
         if not os.path.exists(address_file):
             logE(f"地址文件不存在: {address_file}")
             return []
             
         with open(address_file, 'r', encoding='utf-8') as f:
             addresses = [line.strip() for line in f if line.strip()]
-            logI(f"从文件 {address_file} 成功读取 {len(addresses)} 个地址")
+            logI(f"从文件 '{address_file}' 成功读取 {len(addresses)} 个地址")
             return addresses
             
     except Exception as e:
         logEX(f"读取地址文件时发生错误: {str(e)}")
         return []
 
-def process_single_address(address):
+def process_single_address(address, template_path):
     """
     抓取单个地址的模型, 内部不处理异常，请在外部try
     
@@ -980,8 +975,6 @@ def process_single_address(address):
         logI(f"rdc文件已存在，无需再次截取帧")
 
     # 检查匹配的模板(顶视图)是否存在
-    template_dir = get_path('template_image_dir')
-    template_path = os.path.join(template_dir, f"{filename}.png")
     if not os.path.exists(template_path):
         logE(f"未找到模板图片: {template_path}")
         clear_processes()
@@ -992,7 +985,7 @@ def process_single_address(address):
     open_blender()
 
     # 匹配模板
-    match_template(filename)
+    match_template(template_path)
 
     # 等待Blender保存完成
     if not wait_for_blender_save_signal():
@@ -1007,33 +1000,70 @@ def process_single_address(address):
     logI(f"总运行时间: {int(minutes)}分{int(seconds)}秒")
     return True
 
+def process_district(district_name):
+    """ 抓取一个区域的建筑模型 """
+    district_dir = os.path.join(get_path("request_dir"), district_name)
+    address_file = os.path.join(district_dir, f"{district_name}.txt")
+    if not os.path.exists(address_file):
+        logE(f"地址文件不存在: {address_file}")
+        return False
+    addresses = get_addresses(address_file)
+
+    ## 处理地址对应的顶视图
+    import shutil
+    template_dir = os.path.join(district_dir, "templates")
+    os.makedirs(template_dir, exist_ok=True)
+    for index, address in enumerate(addresses):
+        filename = get_filename(address)
+        source_path = os.path.join(district_dir, f"{district_name} ({index+1}).jpg")
+        target_path = os.path.join(template_dir, f"{filename}.png")
+        shutil.copy2(source_path, target_path)
+
+        try: 
+            logI("-"*40)
+            process_single_address(address, target_path)
+        except Exception as e:
+            logEX(f"处理地址{address}时发生错误: {str(e)}")
+
+    return True
+
+
 def main():
     """
     主函数 - 执行完整的Google地图模型抓取流程
     """
 
-    addresses = get_addresses()
-    if not addresses:
-        logE("未找到有效地址，请检查address_path配置")
-        return False
-    logI("-"*40)
-    
-    for index, address in enumerate(addresses):
-        try:
-            # 原处理单个地址的逻辑
-            logI(f"开始抓取第{index+1}个模型，地址: '{address}'")
-            if not process_single_address(address):
-                logW(f"地址处理失败: {address}")
-            logI("-"*40)
-                
-        except Exception as e:
-            logEX(f"处理地址 {address} 时发生错误: {str(e)}")
+    district_list = ["15"]
+
+    for district in district_list:
+        logI(f"开始处理区域: {district}")
+        if not process_district(district):
+            logE(f"处理区域 {district} 失败")
             continue
+        logI(f"区域 {district} 处理完成")
+
+    # addresses = get_addresses()
+    # if not addresses:
+    #     logE("未找到有效地址，请检查address_path配置")
+    #     return False
+    # logI("-"*40)
     
-    # 执行清理操作
-    if not clear_processes():
-        logE("清理进程时发生错误")
-        return False
+    # for index, address in enumerate(addresses):
+    #     try:
+    #         # 原处理单个地址的逻辑
+    #         logI(f"开始抓取第{index+1}个模型，地址: '{address}'")
+    #         if not process_single_address(address):
+    #             logW(f"地址处理失败: {address}")
+    #         logI("-"*40)
+                
+    #     except Exception as e:
+    #         logEX(f"处理地址 {address} 时发生错误: {str(e)}")
+    #         continue
+    
+    # # 执行清理操作
+    # if not clear_processes():
+    #     logE("清理进程时发生错误")
+    #     return False
 
     return True
 

@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-05-19 16:23:25
+LastEditTime: 2025-06-09 17:51:59
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
@@ -83,6 +83,14 @@ def save_blender_project():
     try:
         # 设置保存目录
         save_dir = get_path("result_dir")
+        district_file = get_path("district_file")
+
+        district = ""
+        if not os.path.exists(district_file):
+            logI("未找到区域文件，默认直接保存在results目录下")
+        else:
+            with open(district_file, "r", encoding="utf-8") as f:
+                district = f.read().strip()
         
         # 检查目录是否存在，如果不存在则创建
         if not os.path.exists(save_dir):
@@ -143,7 +151,11 @@ def save_blender_project():
         # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         # blend_file_path = os.path.join(save_dir, f"{filename}_{timestamp}.blend")
         # 不带时间戳
-        blend_file_path = os.path.join(save_dir, f"{filename}.blend")
+        if district:
+            blend_file_path = os.path.join(save_dir, district, f"{filename}.blend")
+        else:
+            blend_file_path = os.path.join(save_dir, f"{filename}.blend")
+        os.makedirs(os.path.dirname(blend_file_path), exist_ok=True)
         
         # 保存Blender项目
         bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, compress=True, relative_remap=True)

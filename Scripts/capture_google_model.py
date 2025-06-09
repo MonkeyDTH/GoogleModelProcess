@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-06-06 18:25:29
+LastEditTime: 2025-06-09 18:32:17
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 抓取Google地图模型全流程
 '''
@@ -928,7 +928,7 @@ def get_addresses(address_file):
         logEX(f"读取地址文件时发生错误: {str(e)}")
         return []
 
-def process_single_address(address, template_path):
+def process_single_address(address, district_name, template_path):
     """
     抓取单个地址的模型, 内部不处理异常，请在外部try
     
@@ -940,7 +940,7 @@ def process_single_address(address, template_path):
 
     filename = get_filename(address)
     rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
-    result_fname = os.path.join(get_path('result_dir'), f"{filename}.blend")
+    result_fname = os.path.join(get_path('result_dir'), district_name, f"{filename}.blend")
 
     if os.path.exists(result_fname):
         logI(f"已存在结果文件: {result_fname}")
@@ -1015,28 +1015,72 @@ def process_district(district_name):
     os.makedirs(template_dir, exist_ok=True)
     for index, address in enumerate(addresses):
         filename = get_filename(address)
-        source_path = os.path.join(district_dir, f"{district_name} ({index+1}).jpg")
+        source_path_potential = [
+            os.path.join(district_dir, f"{district_name} ({index+1}).jpg"),
+            os.path.join(district_dir, f"{district_name} ({index+1}).png"),
+            os.path.join(district_dir, f"{district_name}({index+1}).jpg"),
+            os.path.join(district_dir, f"{district_name}({index+1}).png")
+        ]
+        source_path = ""
+        for temp_path in source_path_potential:
+            if os.path.exists(temp_path):
+                source_path = temp_path
+                break
+        if not source_path:
+            logE(f"地址对应的图片文件不存在: {address}")
+            continue
         target_path = os.path.join(template_dir, f"{filename}.png")
         shutil.copy2(source_path, target_path)
 
         try: 
             logI("-"*40)
-            process_single_address(address, target_path)
+            process_single_address(address, district_name, target_path)
         except Exception as e:
             logEX(f"处理地址{address}时发生错误: {str(e)}")
 
     return True
 
 
+def get_district_list():
+    """
+    获取request目录下的所有子目录名称作为区域列表
+    """
+    request_dir = get_path('request_dir')
+    if not os.path.exists(request_dir):
+        logE(f"request目录不存在: {request_dir}")
+        return []
+    
+    try:
+        # 获取所有子目录
+        districts = [d for d in os.listdir(request_dir) 
+                    if os.path.isdir(os.path.join(request_dir, d))]
+        if not districts:
+            logW("request目录下没有找到任何子目录")
+            return []
+            
+        logI(f"找到以下区域: {', '.join(districts)}")
+        return districts
+    except Exception as e:
+        logEX(f"读取区域目录时发生错误: {str(e)}")
+        return []
+
+def write_district_to_file(district, filename):
+    """ 将区域名称写入文件中 """
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(district)
+
 def main():
     """
     主函数 - 执行完整的Google地图模型抓取流程
     """
 
-    district_list = ["15"]
+    # district_list = ["1", "2", "4", "12", "15"]
+    district_list = get_district_list()
 
+    district_file = get_path('district_file')
     for district in district_list:
         logI(f"开始处理区域: {district}")
+        write_district_to_file(district, district_file)
         if not process_district(district):
             logE(f"处理区域 {district} 失败")
             continue

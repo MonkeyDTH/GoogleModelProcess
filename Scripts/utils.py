@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-05-06
 LastEditors: Leili
-LastEditTime: 2025-05-19 14:55:34
+LastEditTime: 2025-06-11 10:23:48
 FilePath: /GoogleModelProcess/Scripts/utils.py
 Description: 通用函数
 '''
@@ -48,5 +48,5 @@ def get_filename(address):
         '110_N_La_Brea_Ave_Inglewood_CA_90301'
     """
     # 从配置文件获取地址
-    filename = remove_chinese_chars(address.replace(' ', '_').replace(",", "")).replace("|", "").replace(".", "")
+    filename = remove_chinese_chars(address.replace(' ', '_').replace(",", "")).replace("|", "").replace(".", "").replace("/", "_").replace("\\", "_")
     return filename

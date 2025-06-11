@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-29 16:30:00
 LastEditors: Leili
-LastEditTime: 2025-06-09 17:51:59
+LastEditTime: 2025-06-11 11:49:39
 FilePath: /GoogleModelProcess/Scripts/blender_script.py
 Description: Blender内部操作脚本
 '''
@@ -44,7 +44,7 @@ def import_rdc():
     logD(f"正在导入RenderDoc文件: {rdc_path}")
     try:
         bpy.ops.import_rdc.google_maps(filepath=(rdc_path), filter_glob=".rdc", max_blocks=-1)
-        logI(f"已成功导入RenderDoc文件: {rdc_path}")
+        logD(f"已成功导入RenderDoc文件: {rdc_path}")
             
     except AttributeError as e:
         logE(f"错误: 无法找到RenderDoc导入操作: {str(e)}")
@@ -135,7 +135,7 @@ def save_blender_project():
         try:
             # 打包所有外部资源
             bpy.ops.file.pack_all()
-            logI("已成功打包所有外部资源")
+            logD("已成功打包所有外部资源")
         except Exception as e:
             logW(f"打包外部资源时发生错误: {str(e)}")
             
@@ -159,7 +159,7 @@ def save_blender_project():
         
         # 保存Blender项目
         bpy.ops.wm.save_as_mainfile(filepath=blend_file_path, compress=True, relative_remap=True)
-        logI(f"已将Blender项目保存至: {blend_file_path}")
+        logD(f"已将Blender项目保存至: {blend_file_path}")
         
         # 延迟一小段时间确保文件保存完成
         time.sleep(2)
@@ -397,7 +397,7 @@ def main():
     """
     在Blender内部执行的主函数
     """
-    logI("开始执行Blender内部脚本...")
+    logD("开始执行Blender内部脚本...")
     
     try:
         # 删除场景中的所有物体

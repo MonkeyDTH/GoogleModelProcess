@@ -2,7 +2,7 @@
 Author: Leili
 Date: 2025-04-27 15:27:27
 LastEditors: Leili
-LastEditTime: 2025-06-09 18:32:17
+LastEditTime: 2025-06-11 15:45:09
 FilePath: /GoogleModelProcess/Scripts/capture_google_model.py
 Description: 抓取Google地图模型全流程
 '''
@@ -22,7 +22,7 @@ if project_dir not in sys.path:
 # 导入配置工具和日志工具
 from Scripts.config_utils import get_api_key, get_path, get_setting, get_log_level, get_log_dir, set_setting
 from Scripts.log_utils import setup_logger, logD, logI, logW, logE, logEX
-from Scripts.utils import remove_chinese_chars, get_filename
+from Scripts.utils import get_filename
 
 # 初始化日志系统
 logger = setup_logger(log_level=get_log_level(), log_dir=get_log_dir())
@@ -73,7 +73,7 @@ def launch_chrome_google_map(lat=None, lng=None, zoom=None):
     
     # 构建卫星视图的URL
     url = f'https://www.google.com/maps/@{lat},{lng},{zoom}z/data=!3m1!1e3'
-    logI(f"Google地图URL: {url}")
+    logD(f"Google地图URL: {url}")
     
     # 从配置文件获取Chrome路径
     chrome_path = get_path('chrome_path')
@@ -104,13 +104,13 @@ def launch_chrome_google_map(lat=None, lng=None, zoom=None):
             
             # 直接启动Chrome，不通过cmd.exe
             process = subprocess.Popen(cmd, env=env)
-            logI(f"已打开卫星地图视图，Chrome进程ID: {process.pid}")
+            logD(f"已打开卫星地图视图，Chrome进程ID: {process.pid}")
             
             # 等待新的Chrome进程启动
             time.sleep(2)
             
             if process.pid:
-                logI(f"新启动的Chrome主进程ID: {process.pid}")
+                logD(f"新启动的Chrome主进程ID: {process.pid}")
                 return {process.pid}
             else:
                 logW("未能检测到新的Chrome主进程")
@@ -173,7 +173,7 @@ def launch_renderdoc_and_inject():
         
         # 启动RenderDoc
         subprocess.Popen(cmd)
-        logI(f"已启动RenderDoc")
+        logD(f"已启动RenderDoc")
         
         # 增加初始等待时间
         time.sleep(3)
@@ -195,11 +195,11 @@ def launch_renderdoc_and_inject():
             max_retries = 5
             for attempt in range(max_retries):
                 try:
-                    logI(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
+                    logD(f"尝试第{attempt + 1}次连接RenderDoc窗口...")
                     app = Application(backend="uia").connect(path=renderdoc_path, timeout=20)
                     main_window = app.window(title_re=".*RenderDoc.*")
                     main_window.wait('visible', timeout=20)
-                    logI("成功连接到RenderDoc窗口")
+                    logD("成功连接到RenderDoc窗口")
                     
                     # 获取窗口句柄
                     hwnd = main_window.handle
@@ -267,7 +267,7 @@ def launch_renderdoc_and_inject():
             keyboard.send_keys('{ENTER}')
             time.sleep(1)
             
-            logI("已完成注入操作")
+            logD("已完成注入操作")
             return True
             
         except ImportError:
@@ -333,7 +333,7 @@ def capture_frame(filename=None):
         # 释放鼠标左键
         pyautogui.mouseUp()
         time.sleep(0.5)
-        logI("已完成鼠标移动和截图操作")
+        logD("已完成鼠标移动和截图操作")
 
         # 切换到RenderDoc窗口
         if not activate_window("RenderDoc"):
@@ -344,12 +344,12 @@ def capture_frame(filename=None):
         if filename:
             # 直接使用预先计算好的文件名
             save_filename = filename
-            logI(f"使用预先计算的文件名保存RDC: {save_filename}")
+            logD(f"使用预先计算的文件名保存RDC: {save_filename}")
         else:
             # 如果没有提供地址和文件名，使用时间戳
             from datetime import datetime
             save_filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            logI(f"未提供地址或文件名，使用时间戳文件名: {save_filename}")
+            logD(f"未提供地址或文件名，使用时间戳文件名: {save_filename}")
 
         # 保存截取结果
         pyautogui.moveTo(1275, 1100, duration=0.3)
@@ -384,7 +384,7 @@ def capture_frame(filename=None):
             # 如果没有指定保存目录，则使用默认位置（通常是用户的"Documents"文件夹）
             full_path = f"{save_filename}.rdc"  # 这里只返回文件名，因为不确定默认保存位置
             
-        logI(f"RDC文件已保存: {full_path}")
+        logD(f"RDC文件已保存: {full_path}")
         return full_path
         
     except Exception as e:
@@ -410,16 +410,16 @@ def check_rdc_file(rdc_file_path=None):
         min_size = int(get_setting('rdc_file_min_size', 1)) * 1024 * 1024  # 默认最小1MB
         
         if rdc_size < min_size:
-            logE(f"RDC文件大小过小 ({rdc_size / 1024 / 1024:.2f} MB < {int(get_setting('rdc_file_min_size', 1)):.2f} MB)，可能捕获失败")
+            logW(f"RDC文件大小过小 ({rdc_size / 1024 / 1024:.2f} MB < {int(get_setting('rdc_file_min_size', 1)):.2f} MB)，可能捕获失败")
             # 删除过小的RDC文件
             os.remove(rdc_file_path)
             clear_processes()
             return False
         
-        logI(f"RDC文件大小正常: {rdc_size / 1024 / 1024:.2f} MB")
+        logD(f"RDC文件大小正常: {rdc_size / 1024 / 1024:.2f} MB")
         return True
     else:
-        logW(f"未找到RDC文件: {rdc_file_path}")
+        logE(f"未找到RDC文件: {rdc_file_path}")
         return False
 
 def open_blender():
@@ -480,7 +480,7 @@ def open_blender():
             
             # 删除信号文件
             os.remove(signal_file)
-            logI("Blender脚本执行完成，继续执行后续步骤")
+            logD("Blender脚本执行完成，继续执行后续步骤")
             
             return True
 
@@ -511,6 +511,16 @@ def match_template(template_path:str):
         if not os.path.exists(template_path):
             print(f"未找到模板图片: {template_path}")
             return False
+        
+        # 将鼠标移动到屏幕中心，然后按下Home键，确保目标在视野中的缩放比例正常
+        pyautogui.moveTo(pyautogui.size()[0] // 2, pyautogui.size()[1] // 2, duration=0.3)
+        from pywinauto import Application
+        # 连接到目标窗口（例如 "Blender"）
+        app = Application(backend="uia").connect(title_re=".*Blender.*")
+        window = app.window(title_re=".*Blender.*")
+        # 发送 Home 键
+        window.type_keys("{HOME}")
+        time.sleep(2)
             
         # 截取当前屏幕
         logD("正在截取当前屏幕...")
@@ -543,50 +553,50 @@ def match_template(template_path:str):
         screenshot_gray = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
         
         # 尝试使用SIFT特征检测器
-        try:
-            print("尝试使用SIFT特征检测器...")
-            sift = cv2.SIFT_create()
+        # try:
+        logD("使用SIFT特征匹配")
+        sift = cv2.SIFT_create()
+        
+        # 在模板和截图中检测关键点和描述符
+        kp1, des1 = sift.detectAndCompute(template_gray, None)
+        kp2, des2 = sift.detectAndCompute(screenshot_gray, None)
+        
+        # 使用FLANN匹配器进行特征匹配
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        
+        # 获取匹配结果
+        matches = flann.knnMatch(des1, des2, k=2)
+        
+        # 应用Lowe's比率测试筛选好的匹配
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.7 * n.distance:
+                good_matches.append(m)
+        
+        print(f"SIFT找到 {len(good_matches)} 个良好匹配点")
+        
+        # 如果找到足够的好匹配点，处理匹配结果
+        min_match_count = int(get_setting("min_match_count"))
+        if len(good_matches) >= min_match_count:
+            ret = process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
+                                    template_path, screenshot_path, timestamp, save_dir, "SIFT")
             
-            # 在模板和截图中检测关键点和描述符
-            kp1, des1 = sift.detectAndCompute(template_gray, None)
-            kp2, des2 = sift.detectAndCompute(screenshot_gray, None)
-            
-            # 使用FLANN匹配器进行特征匹配
-            FLANN_INDEX_KDTREE = 1
-            index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-            search_params = dict(checks=50)
-            flann = cv2.FlannBasedMatcher(index_params, search_params)
-            
-            # 获取匹配结果
-            matches = flann.knnMatch(des1, des2, k=2)
-            
-            # 应用Lowe's比率测试筛选好的匹配
-            good_matches = []
-            for m, n in matches:
-                if m.distance < 0.7 * n.distance:
-                    good_matches.append(m)
-            
-            print(f"SIFT找到 {len(good_matches)} 个良好匹配点")
-            
-            # 如果找到足够的好匹配点，处理匹配结果
-            min_match_count = int(get_setting("min_match_count"))
-            if len(good_matches) >= min_match_count:
-                ret = process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, template, 
-                                      template_path, screenshot_path, timestamp, save_dir, "SIFT")
-                
-                # 创建完成信号文件
-                if ret:
-                    signal_file = os.path.join(project_dir, "signal", "template_match_done.signal")
-                    with open(signal_file, 'w') as f:
-                        f.write("1")
-                    logI("模板匹配完成，已创建信号文件")
-                    return True
-                return False
-            else:
-                # print("SIFT匹配点不足，尝试使用ORB特征检测器...")
-                logW("SIFT匹配点不足...")
-        except Exception as e:
-            print(f"SIFT特征检测失败: {str(e)}，尝试使用ORB特征检测器...")
+            # 创建完成信号文件
+            if ret:
+                signal_file = os.path.join(project_dir, "signal", "template_match_done.signal")
+                with open(signal_file, 'w') as f:
+                    f.write("1")
+                logD("模板匹配完成，已创建信号文件")
+                return True
+            return False
+        else:
+            # print("SIFT匹配点不足，尝试使用ORB特征检测器...")
+            raise RuntimeError("SIFT匹配点不足...")
+        # except Exception as e:
+        #     print(f"SIFT特征检测失败: {str(e)}，尝试使用ORB特征检测器...")
         
         # # 尝试使用ORB特征检测器
         # try:
@@ -767,7 +777,7 @@ def process_matches(good_matches, kp1, kp2, template_gray, screenshot_cv, templa
         pyautogui.mouseUp()
         time.sleep(0.5)
         
-        logI("已完成目标物体的框选操作")
+        logD("已完成目标物体的框选操作")
 
         pyautogui.hotkey('shift', 'ctrl', 'd')
         time.sleep(0.5)
@@ -903,6 +913,30 @@ def wait_for_blender_save_signal():
     logD("接收到Blender保存完成信号")
     return True
 
+def get_chrome_version():
+    """获取Chrome浏览器版本号"""
+    chrome_path = get_path('chrome_path')
+    if os.path.exists(chrome_path):
+        try:
+            from win32com.client import Dispatch
+            parser = Dispatch("Scripting.FileSystemObject")
+            version = parser.GetFileVersion(chrome_path)
+            return version
+        except Exception as e:
+            logW(f"获取Chrome版本失败: {str(e)}")
+            return ""
+    else:
+        return ""
+
+def check_chrome_version():
+    """ 检查chrome版本是否符合要求 """
+    chrome_version = get_chrome_version()
+    if int(chrome_version.split(".")[0]) > 135:
+        logE(f"Chrome版本过高: {chrome_version}，请使用低于136.0.0.0的版本。")
+        return False
+    else:
+        return True
+        
 def get_addresses(address_file):
     """
     从配置文件中指定的地址文件逐行读取地址列表
@@ -928,80 +962,100 @@ def get_addresses(address_file):
         logEX(f"读取地址文件时发生错误: {str(e)}")
         return []
 
-def process_single_address(address, district_name, template_path):
+def process_single_address(address, district_name, template_path) -> int:
     """
     抓取单个地址的模型, 内部不处理异常，请在外部try
     
     参数:
         address: 要处理的地址字符串
+    返回:
+        1表示运行成功，0表示运行失败，2表示结果已存在
     """
-    
-    start_time = time.time()
 
     filename = get_filename(address)
     rdc_fname = os.path.join(get_path('rdc_dir'), f"{filename}.rdc")
     result_fname = os.path.join(get_path('result_dir'), district_name, f"{filename}.blend")
 
     if os.path.exists(result_fname):
-        logI(f"已存在结果文件: {result_fname}")
-        return True
+        logD(f"已存在结果文件: {result_fname}")
+        return 2
+    
+    if not check_chrome_version():
+        return
 
+    logI("-"*20)
     clear_processes()
+    logI(f"开始处理地址: '{address}'")
+    start_time = time.time()
     if not os.path.exists(rdc_fname):
         ## 不存在之前的结果，则执行抓取
         # 获取经纬度
         lat, lng = get_coordinates_from_google(address, API_KEY)
-        logI(f"地址: '{address}', 经纬度: ({lat}, {lng})")
-        
-        # 执行启动并获取进程ID
-        chrome_pids = launch_chrome_google_map(lat, lng)
-        # 启动RenderDoc
-        if not launch_renderdoc_and_inject():
-            raise RuntimeError("启动RenderDoc或注入失败")
-        # 截取帧
-        if os.path.exists(rdc_fname):
-            os.remove(rdc_fname)
-        capture_frame(filename)
+        logD(f"经纬度: ({lat}, {lng})")
 
+        def capture_rdc():
+            # 执行启动并获取进程ID
+            chrome_pids = launch_chrome_google_map(lat, lng)
+            # 启动RenderDoc
+            if not launch_renderdoc_and_inject():
+                logE("启动RenderDoc或注入失败")
+                return 0
+            # 截取帧
+            if os.path.exists(rdc_fname):
+                os.remove(rdc_fname)
+            capture_frame(filename)
+
+        capture_rdc()
         time.sleep(1)
+        
         if not check_rdc_file(rdc_fname):
             clear_processes()
-            raise RuntimeError("RDC文件存在问题，无法继续处理")
+            logI("尝试再次抓取...")
+            capture_rdc()
+            time.sleep(1)
+            if not check_rdc_file(rdc_fname):  
+                logE("再次抓取失败，终止处理")
+                return 0
+            # logE("RDC文件存在问题，无法继续处理")
     elif not check_rdc_file(rdc_fname):
         # 已存在的rdc结果不符合要求，TODO:重新抓取
         clear_processes()
-        raise RuntimeError("RDC文件存在问题，无法继续处理")
+        # logE("RDC文件存在问题，无法继续处理")
+        return 0
     else:
-        logI(f"rdc文件已存在，无需再次截取帧")
+        logI(f"RDC文件已存在，无需再次截取帧")
 
     # 检查匹配的模板(顶视图)是否存在
     if not os.path.exists(template_path):
         logE(f"未找到模板图片: {template_path}")
         clear_processes()
-        return False
+        return 0
     
     set_setting("address", address)
     # 打开Blender, 导入rdc文件
     open_blender()
 
     # 匹配模板
-    match_template(template_path)
+    if not match_template(template_path):
+        return 0
 
     # 等待Blender保存完成
     if not wait_for_blender_save_signal():
         logE("等待Blender保存信号超时")
         clear_processes()
-        return False
+        return 0
     
     total_time = time.time() - start_time
     minutes, seconds = divmod(total_time, 60)
     
-    logI(f"脚本执行完毕, 抓取模型地址: {address}")
-    logI(f"总运行时间: {int(minutes)}分{int(seconds)}秒")
-    return True
+    logI(f"抓取模型完成, 耗时: {int(minutes)}分{int(seconds)}秒")
+    return 1
 
 def process_district(district_name):
     """ 抓取一个区域的建筑模型 """
+    if not check_chrome_version():
+        return
+
     district_dir = os.path.join(get_path("request_dir"), district_name)
     address_file = os.path.join(district_dir, f"{district_name}.txt")
     if not os.path.exists(address_file):
@@ -1009,11 +1063,13 @@ def process_district(district_name):
         return False
     addresses = get_addresses(address_file)
 
-    ## 处理地址对应的顶视图
+    ## 挨个处理地址
     import shutil
     template_dir = os.path.join(district_dir, "templates")
     os.makedirs(template_dir, exist_ok=True)
+    result_count = [0] * 3
     for index, address in enumerate(addresses):
+        ## 先处理地址对应的顶视图
         filename = get_filename(address)
         source_path_potential = [
             os.path.join(district_dir, f"{district_name} ({index+1}).jpg"),
@@ -1028,17 +1084,18 @@ def process_district(district_name):
                 break
         if not source_path:
             logE(f"地址对应的图片文件不存在: {address}")
+            result_count[0] += 1
             continue
         target_path = os.path.join(template_dir, f"{filename}.png")
         shutil.copy2(source_path, target_path)
 
         try: 
-            logI("-"*40)
-            process_single_address(address, district_name, target_path)
+            ret = process_single_address(address, district_name, target_path)
+            result_count[ret] += 1
         except Exception as e:
             logEX(f"处理地址{address}时发生错误: {str(e)}")
 
-    return True
+    return result_count
 
 
 def get_district_list():
@@ -1074,40 +1131,33 @@ def main():
     主函数 - 执行完整的Google地图模型抓取流程
     """
 
-    # district_list = ["1", "2", "4", "12", "15"]
+    if not check_chrome_version():
+        return
+
+    # district_list = ["9"]
     district_list = get_district_list()
 
     district_file = get_path('district_file')
+    result_count = [0] * 3
     for district in district_list:
+        logI("="*40)
         logI(f"开始处理区域: {district}")
         write_district_to_file(district, district_file)
-        if not process_district(district):
-            logE(f"处理区域 {district} 失败")
-            continue
-        logI(f"区域 {district} 处理完成")
+        ret = process_district(district)
+        logI(f"-"*20)
+        logI(f"区域 {district} 处理完成, 结果已存在: {ret[2]}, 成功: {ret[1]}, 失败: {ret[0]}")
+        for i in range(3):
+            result_count[i] += ret[i]
+    building_count = sum(result_count)
 
-    # addresses = get_addresses()
-    # if not addresses:
-    #     logE("未找到有效地址，请检查address_path配置")
-    #     return False
-    # logI("-"*40)
+    logI("所有区域处理完成")
+    logI(f"共处理 {len(district_list)} 个区域, {building_count} 个建筑")
+    logI(f"结果已存在: {result_count[2]} 个, 运行成功: {result_count[1]} 个, 运行失败: {result_count[0]} 个")
     
-    # for index, address in enumerate(addresses):
-    #     try:
-    #         # 原处理单个地址的逻辑
-    #         logI(f"开始抓取第{index+1}个模型，地址: '{address}'")
-    #         if not process_single_address(address):
-    #             logW(f"地址处理失败: {address}")
-    #         logI("-"*40)
-                
-    #     except Exception as e:
-    #         logEX(f"处理地址 {address} 时发生错误: {str(e)}")
-    #         continue
-    
-    # # 执行清理操作
-    # if not clear_processes():
-    #     logE("清理进程时发生错误")
-    #     return False
+    # 执行清理操作
+    if not clear_processes():
+        logE("清理进程时发生错误")
+        return False
 
     return True
 
@@ -1117,7 +1167,7 @@ if __name__ == "__main__":
     start_time = time.time()
     # 输出版本信息
     logI("="*50)
-    logI("Google地图模型抓取工具 v1.0.0")
+    logI("Google地图模型抓取工具 v1.1.0")
     logI(f"开始时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     logI("="*50)
 
